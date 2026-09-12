@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Size;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -39,6 +41,12 @@ class MagicLinkContractTest {
         assertTrue(violations.stream().allMatch(violation ->
                 "email".equals(violation.getPropertyPath().toString())));
 
+        Set<ConstraintViolation<MagicLinkRequest>> formatViolations = validator.validate(
+                new MagicLinkRequest("nao-e-um-email")
+        );
+        assertTrue(formatViolations.stream().anyMatch(violation ->
+                violation.getConstraintDescriptor().getAnnotation() instanceof Email));
+
         String domain = "@x.com";
         String longEmail = "a".repeat(MagicLinkRequest.MAX_EMAIL_LENGTH - domain.length() + 1) + domain;
         Set<ConstraintViolation<MagicLinkRequest>> lengthViolations = validator.validate(
@@ -46,8 +54,7 @@ class MagicLinkContractTest {
         );
 
         assertTrue(lengthViolations.stream().anyMatch(violation ->
-                violation.getConstraintDescriptor().getAnnotation().annotationType().getSimpleName()
-                        .equals("Size")));
+                violation.getConstraintDescriptor().getAnnotation() instanceof Size));
     }
 
     @Test
@@ -78,5 +85,10 @@ class MagicLinkContractTest {
         assertEquals("email", json.get("fieldErrors").get(0).get("field").asText());
         assertEquals("invalid_format", json.get("fieldErrors").get(0).get("code").asText());
         assertFalse(json.toString().contains("pessoa@example.com"));
+
+        JsonNode rateLimited = objectMapper.readTree(objectMapper.writeValueAsString(
+                MagicLinkErrorResponse.rateLimited()
+        ));
+        assertFalse(rateLimited.has("fieldErrors"));
     }
 }
