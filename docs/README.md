@@ -7,6 +7,7 @@
 | [PRD-Satoshi-Pet-Web-v2.0.md](./PRD-Satoshi-Pet-Web-v2.0.md) | Especificação funcional completa (produto, regras, arquitetura) |
 | [backlog/README.md](./backlog/README.md) | Backlog de implementação — índice, convenções e ordem de entrega |
 | [../AGENTS.md](../AGENTS.md) | Guia para agentes de IA — stack, invariantes e convenções do projeto |
+| [operacao/tls.md](./operacao/tls.md) | Perfis TLS staging/prod e contrato com o proxy/ingress |
 
 ## Contratos
 
