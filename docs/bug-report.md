@@ -1,8 +1,8 @@
-# Bug Report — infra/scripts (versão e prova local)
+# Bug Report — Satoshi Pet Web / PWA Foundation (FUND)
 
-> Data: 12/09/2026 | Stack: Bash (Git Bash/WSL)
-> Modo: **quick**
-> Arquivos analisados: 4 (`versao.sh`, `versao.test.sh`, `check-pwa.sh`, `check-api.sh`)
+> Data: 12/09/2026 | Stack: Angular 22, TypeScript 6.0, Vitest 4.x  
+> Modo: **pr-review** — arquivos criados/modificados neste épico  
+> Arquivos analisados: 19 (criados) + 8 (modificados)
 
 ---
 
@@ -10,24 +10,36 @@
 
 | Severidade | Quantidade |
 |------------|------------|
-| CRITICO    | 0          |
+| CRÍTICO    | 0          |
 | ALTO       | 0          |
-| MEDIO      | 0          |
+| MÉDIO      | 0          |
 | BAIXO      | 0          |
 | **Total**  | **0**      |
 
-**Veredicto:** APROVADO
-
-Corrigido nesta entrega, antes do relatório:
-
-- `sed | head` com `set -o pipefail` (SIGPIPE) — leitores passaram a `awk` + `exit`.
-- `awk -v nova="$nova-SNAPSHOT"` — o sufixo vai no literal do script, não no `-v`.
-- `pom.xml` vivo voltou para `0.1.0-SNAPSHOT`; `atualizar`/`verificar` agora têm teste de imutabilidade.
+**Veredicto: APROVADO**
 
 ---
 
 ## Observações Gerais
 
-- Caminhos entre aspas (`Pet Web` tem espaço).
-- `exigir_semver` antes de interpolar em `awk`.
-- `check-api.sh` exige Docker como o `check-backend.sh` do acertoapp; `skipITs` no pom ainda pode pular ITs.
+### Padrões positivos identificados
+
+1. **OfflineService — cleanup correto**: Os listeners `online`/`offline` são adicionados no construtor e removidos em `ngOnDestroy` — sem memory leak. Verificado manualmente e confirmado pelo teste `deve remover listeners ao destruir o serviço`.
+
+2. **Signals em vez de observables**: `OfflineService.isOffline` exposto como `signal<boolean>` (não como `Observable`), eliminando o padrão clássico de vazamento por falta de `takeUntilDestroyed`.
+
+3. **ChangeDetectionStrategy.OnPush** em todos os componentes criados — padrão correto para performance em Angular.
+
+4. **Guards SSR**: `OfflineService` protege acessos a `window`/`navigator` com `typeof window !== 'undefined'` — compatível com renderização no servidor.
+
+5. **Lazy loading universal**: Todas as rotas de feature usam `loadComponent()` — nenhum componente importado diretamente no `app.routes.ts`.
+
+6. **Rotas aninhadas para `entrar/verificar`**: Rota `verificar` foi corretamente aninhada como filha de `entrar` em vez de path string `'entrar/verificar'`, evitando ambiguidade com o prefix-matching padrão do Angular Router.
+
+7. **`toSignal` + `ActivatedRoute.paramMap`** em `EnderecoComponent` — padrão moderno e sem subscription manual.
+
+8. **Testes completos**: 3 arquivos de teste, 20 casos cobrindo comportamento reativo, acessibilidade e cleanup de recursos.
+
+---
+
+_Revisado em 12/09/2026 — Nenhuma correção necessária._
