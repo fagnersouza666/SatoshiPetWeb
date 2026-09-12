@@ -295,6 +295,7 @@ satoshi-pet-web/
 ├── packages/
 │   └── shared-types/           # Tipos/eventos compartilhados (opcional)
 ├── infra/
+│   ├── scripts/                # versao.sh, check-pwa.sh, check-api.sh
 │   ├── docker-compose.yml      # stack completa: pwa, api, postgres, minio, redis, regtest
 │   ├── docker-compose.prod.yml # overrides de produção
 │   ├── flyway/                 # ou migrations dentro do api
@@ -327,8 +328,11 @@ operação ao módulo correspondente. Os comandos agregados são:
 | Comando | Módulos |
 |---------|---------|
 | `npm run build` | `apps/pwa` e `services/api` |
-| `npm test` | testes da PWA e da API |
-| `npm run verify` | testes da PWA e `verify` da API, incluindo integrações quando habilitadas |
+| `npm test` | testes do `versao.sh`, da PWA e da API |
+| `npm run verify` | `versao.sh verificar`, testes da PWA e `verify` da API, incluindo integrações quando habilitadas |
+| `./infra/scripts/versao.sh` | incrementa ou confere a versão única de PWA e API |
+| `./infra/scripts/check-pwa.sh` | prova local da PWA |
+| `./infra/scripts/check-api.sh` | prova local da API (`mvnw verify`; exige Docker) |
 
 Também há comandos específicos (`start:pwa`, `start:api`, `build:pwa`,
 `build:api`, `test:pwa` e `test:api`). A seleção do Node.js segue a matriz

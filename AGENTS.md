@@ -13,39 +13,18 @@ Guia para agentes de IA que trabalham neste repositório.
 
 ## 2. Estado atual do repositório
 
-O repositório contém **somente documentação** — a implementação ainda não começou. Não há código-fonte, build ou testes neste momento.
-
-```
-Pet Web/
-├── .gitignore                         # Artefatos de build, segredos, volumes locais
-├── docs/
-│   ├── PRD-Satoshi-Pet-Web-v2.0.md   # Especificação funcional completa (fonte da verdade)
-│   └── backlog/                       # Backlog de implementação por épicos
-│       ├── README.md                  # Índice, convenções e ordem de entrega
-│       ├── 00-definicao-tecnica.md    # Stack, arquitetura, integrações, modelo de dados
-│       ├── 01-fundacao-e-infraestrutura.md
-│       ├── 02-contas-e-vinculos.md
-│       ├── 03-monitor-bitcoin.md
-│       ├── 04-motor-do-pet.md
-│       ├── 05-arte-e-geracao-ia.md
-│       ├── 06-dca-e-contabilidade.md
-│       ├── 07-localizacao-e-clima.md
-│       ├── 08-interface-e-pwa.md
-│       ├── 09-notificacoes.md
-│       ├── 10-admin-e-operacao.md
-│       └── 11-criterios-de-aceite-e-qualidade.md
-└── AGENTS.md
-```
-
-Estrutura planejada para o código (monorepo, ver `docs/backlog/00-definicao-tecnica.md` §6):
+O monorepo já tem a base da PWA Angular e da API Quarkus. A fundação (Compose, CI, domínio) ainda está em andamento.
 
 ```
 .gitignore         # Build, IDE, .env, volumes Docker, dados de regtest
-apps/pwa/          # Angular 22 PWA (produto principal) + Dockerfile
-services/api/      # Backend Quarkus + Dockerfile
-packages/          # Tipos/eventos compartilhados (opcional)
-infra/             # Docker Compose (stack completa), migrations, k8s
+apps/pwa/          # Angular 22 PWA (produto principal)
+services/api/      # Backend Quarkus
+infra/scripts/     # versao.sh, check-pwa.sh, check-api.sh
+docs/              # PRD, backlog e critérios de aceite
+AGENTS.md
 ```
+
+Estrutura planejada (ver `docs/backlog/00-definicao-tecnica.md` §6): Dockerfiles, Compose, `packages/` e k8s entram com o épico `FUND`.
 
 ## 3. Stack definida
 
@@ -126,6 +105,11 @@ Estas regras vêm do PRD e têm precedência sobre qualquer atalho de implementa
 - Ao criar ou modificar comportamento, atualizar a documentação afetada em `docs/` no mesmo commit ou commit `docs:` adjacente.
 - Decisões arquiteturais novas ou desvios do PRD devem ser registrados (ADR ou nota no documento pertinente).
 
+### Versionamento
+- PWA, API e `package.json` da raiz **sempre na mesma versão** `X.Y.Z` (o POM usa `-SNAPSHOT`).
+- Nunca editar versão à mão: `./infra/scripts/versao.sh funcionalidade|corrigir|grande`.
+- `grande` só com pedido explícito do usuário. Docs/chore sem mudança de produto não incrementam.
+
 ### Dependências
 - Usar sempre a última versão estável das bibliotecas/frameworks, salvo conflito comprovado no projeto.
 
@@ -141,20 +125,32 @@ Estas regras vêm do PRD e têm precedência sobre qualquer atalho de implementa
 
 ## 8. Comandos
 
-Ainda não há código — esta seção será preenchida quando a fundação (épico `FUND`) for implementada. Referência planejada:
+Executar na raiz do repositório:
 
 ```bash
-# Backend (services/api) — planejado
-./mvnw quarkus:dev        # desenvolvimento
-./mvnw test               # testes unitários
-./mvnw verify             # testes + integração (Testcontainers)
+# PWA
+npm run start:pwa         # dev server Angular
+npm run test:pwa          # testes unitários (sem watch)
+npm run build:pwa         # build de produção
 
-# Frontend (apps/pwa) — planejado
-npm start                 # dev server
-npm test                  # testes unitários
-npm run build             # build de produção
+# API
+npm run start:api         # quarkus:dev
+npm run test:api          # testes unitários
+# verify da API (Testcontainers) — via check-api.sh
 
-# Infra local — planejado
+# Prova local antes de commit/push
+./infra/scripts/check-pwa.sh    # versao.sh verificar + npm run test:pwa
+./infra/scripts/check-api.sh    # versao.sh verificar + ./mvnw verify (exige Docker)
+npm run verify                  # versao.sh verificar + testes PWA + verify da API
+
+# Versão do produto (PWA + API juntos)
+./infra/scripts/versao.sh atual
+./infra/scripts/versao.sh verificar
+./infra/scripts/versao.sh corrigir          # 1.0.0 → 1.0.1
+./infra/scripts/versao.sh funcionalidade    # 1.0.0 → 1.1.0
+./infra/scripts/versao.sh grande            # só com pedido explícito
+
+# Infra local — planejado (épico FUND)
 docker compose up -d      # PostgreSQL, MinIO, regtest
 ```
 

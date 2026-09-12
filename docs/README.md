@@ -44,4 +44,9 @@ Os comandos abaixo devem ser executados na raiz do repositório:
 | `npm test` | Executa os testes unitários da PWA e da API |
 | `npm run test:pwa` | Executa somente os testes da PWA, sem watch |
 | `npm run test:api` | Executa somente os testes da API |
-| `npm run verify` | Testa a PWA e executa `verify` da API |
+| `npm run verify` | Confere a versão do produto, testa a PWA e executa `verify` da API |
+| `npm run test:versao` | Testes do script `infra/scripts/versao.sh` |
+| `./infra/scripts/versao.sh atual` | Mostra as versões da raiz, PWA e API |
+| `./infra/scripts/versao.sh verificar` | Falha se as três versões divergirem |
+| `./infra/scripts/check-pwa.sh` | Prova local da PWA (`versao.sh verificar` + testes) |
+| `./infra/scripts/check-api.sh` | Prova local da API (`versao.sh verificar` + `mvnw verify`; exige Docker) |
