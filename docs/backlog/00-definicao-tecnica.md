@@ -330,7 +330,7 @@ operação ao módulo correspondente. Os comandos agregados são:
 | `npm run build` | `apps/pwa` e `services/api` |
 | `npm test` | testes do `versao.sh`, da PWA e da API |
 | `npm run verify` | `versao.sh verificar`, testes da PWA e `verify` da API, incluindo integrações quando habilitadas |
-| `./infra/scripts/versao.sh` | incrementa ou confere a versão única de PWA e API |
+| `./infra/scripts/versao.sh` | incrementa (só com mudança de comportamento) ou confere a versão única de PWA e API |
 | `./infra/scripts/check-pwa.sh` | prova local da PWA |
 | `./infra/scripts/check-api.sh` | prova local da API (`mvnw verify`; exige Docker) |
 

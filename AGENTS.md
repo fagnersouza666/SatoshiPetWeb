@@ -108,7 +108,7 @@ Estas regras vêm do PRD e têm precedência sobre qualquer atalho de implementa
 ### Versionamento
 - PWA, API e `package.json` da raiz **sempre na mesma versão** `X.Y.Z` (o POM usa `-SNAPSHOT`).
 - Nunca editar versão à mão: `./infra/scripts/versao.sh funcionalidade|corrigir|grande`.
-- `grande` só com pedido explícito do usuário. Docs/chore sem mudança de produto não incrementam.
+- `grande` só com pedido explícito do usuário. Docs, chore, teste ou infra sem mudança de comportamento em `apps/pwa/src/` ou `services/api/src/` não incrementam (deps, lockfile, `.nvmrc`, README).
 
 ### Dependências
 - Usar sempre a última versão estável das bibliotecas/frameworks, salvo conflito comprovado no projeto.

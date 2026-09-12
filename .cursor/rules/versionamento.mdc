@@ -1,5 +1,5 @@
 ---
-description: Incremento obrigatório da versão do produto (PWA e API juntos) em toda alteração e correção
+description: Incremento obrigatório da versão do produto (PWA e API juntos) em alteração de comportamento; chore/deps não incrementam
 alwaysApply: true
 ---
 
@@ -25,9 +25,9 @@ PWA (`apps/pwa/package.json`), API (`services/api/pom.xml`) e a raiz (`package.j
 
 ## Regras
 
-- Toda alteração de produto (código em `apps/pwa/` ou `services/api/`) **incrementa no mesmo commit** da mudança.
+- Toda alteração de **comportamento de produto** em `apps/pwa/src/` ou `services/api/src/` (e recursos de produto equivalentes) **incrementa no mesmo commit** da mudança.
 - Lote que mistura feature e correção: use `funcionalidade` (o do meio vence).
-- Só docs, chore, teste ou infra **sem** mudança de produto: **não** incremente; declare isso no resumo.
+- Só docs, chore, teste ou infra **sem** mudança de produto: **não** incremente; declare isso no resumo. Inclui atualização de dependências, plugin de teste, `packageManager`, lockfile, `.nvmrc` e README.
 - Nunca rode `grande` sem o usuário mandar. Nunca adivinhe major.
 - Depois do bump: promova `[Não lançado]` no `CHANGELOG.md` para `[X.Y.Z]` quando o arquivo existir.
 
