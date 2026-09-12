@@ -22,6 +22,11 @@ Registro por e-mail (magic link), recuperação por código, vínculo conta↔en
 **Critérios de aceite:** CA-001  
 **Dependências:** FUND-02, integração e-mail (stub em dev)  
 **Notas técnicas:** Token hash armazenado; link expira em minutos configuráveis.
+O contrato de persistência usa `magic_link_tokens` com `token_hash`, `issued_at`,
+`expires_at` e `consumed_at`; o consumo é uma atualização condicional atômica
+(`consumed_at IS NULL` e `expires_at > agora`). O TTL é fornecido pela chave
+`satoshi-pet.magic-link.ttl`, sem valor padrão nesta atividade. O token bruto
+fica somente no fluxo emissor e nunca é persistido.
 
 ---
 
