@@ -1,0 +1,69 @@
+<div class="shell">
+
+  <!-- Banner offline — exibido quando navigator.onLine = false (CA-031) -->
+  @if (offlineService.isOffline()) {
+    <div class="offline-banner" role="alert" aria-live="assertive" aria-atomic="true">
+      <svg class="offline-banner__icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18"
+           viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor"
+          d="M24 8.98A16.08 16.08 0 0 0 12 4C7.31 4 3.1 5.89.21 8.98L2 10.77C4.39 8.33 7.53 7 12 7s7.61 1.33 10 3.77L24 8.98ZM12 2C6.48 2 1.52 4.27.29 7.5l1.71 1.71C3.65 6.11 7.52 4 12 4s8.35 2.11 10 5.21l1.71-1.71C22.48 4.27 17.52 2 12 2Zm4 10-4-4-4 4h3v6h2v-6h3Zm-4 8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2Z"/>
+      </svg>
+      <span>Sem conexão — exibindo último estado salvo</span>
+    </div>
+  }
+
+  <!-- Cabeçalho -->
+  <header class="header" role="banner">
+    <div class="header__inner">
+      <a routerLink="/" class="header__logo" aria-label="Satoshi Pet — página inicial">
+        <svg class="header__logo-icon" xmlns="http://www.w3.org/2000/svg"
+             viewBox="0 0 512 512" width="32" height="32" aria-hidden="true">
+          <rect width="512" height="512" rx="96" fill="#0f172a"/>
+          <circle cx="256" cy="256" r="180" fill="#f59e0b"/>
+          <text x="256" y="335" font-family="Arial,sans-serif" font-size="280" font-weight="900"
+                text-anchor="middle" fill="#0f172a">₿</text>
+        </svg>
+        <span class="header__title">Satoshi Pet</span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Conteúdo principal -->
+  <main class="main" id="main-content" tabindex="-1">
+    <router-outlet />
+  </main>
+
+  <!-- Navegação inferior (mobile-first) -->
+  <nav class="bottom-nav" role="navigation" aria-label="Navegação principal">
+    <a routerLink="/conta"
+       routerLinkActive="bottom-nav__item--active"
+       class="bottom-nav__item"
+       aria-label="Minha conta">
+      <!-- ícone: pessoa -->
+      <svg class="bottom-nav__icon" xmlns="http://www.w3.org/2000/svg"
+           width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor"
+          d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+      </svg>
+      <span class="bottom-nav__label">Conta</span>
+    </a>
+
+    <a routerLink="/endereco"
+       routerLinkActive="bottom-nav__item--active"
+       class="bottom-nav__item"
+       [routerLinkActiveOptions]="{ exact: false }"
+       aria-label="Endereço Bitcoin">
+      <!-- ícone: carteira/endereço -->
+      <svg class="bottom-nav__icon" xmlns="http://www.w3.org/2000/svg"
+           width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor"
+          d="M21 18v1c0 1.1-.9 2-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14c1.1 0 2 .9 2 2v1h-9a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
+      </svg>
+      <span class="bottom-nav__label">Endereço</span>
+    </a>
+  </nav>
+
+</div>
+
+<!-- Região de status para leitores de tela -->
+<div aria-live="polite" aria-atomic="true" class="sr-only" id="status-region"></div>

@@ -1,12 +1,16 @@
-import { Component, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
+/**
+ * Componente raiz da aplicação.
+ *
+ * Responsável apenas por montar o router-outlet; o layout (header, nav,
+ * banner offline) é gerenciado pelo ShellComponent definido nas rotas.
+ */
 @Component({
   imports: [RouterOutlet],
   selector: 'app-root',
-  styleUrl: './app.scss',
-  templateUrl: './app.html',
+  template: '<router-outlet />',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class App {
-  protected readonly title = signal('pwa');
-}
+export class App {}

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 240" role="img" aria-label="Ovo do pet  aguardando primeiro recebimento">
+  <!-- Egg body -->
+  <ellipse cx="100" cy="130" rx="75" ry="95" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="3"/>
+  <!-- Shine -->
+  <ellipse cx="75" cy="90" rx="18" ry="26" fill="#ffffff" opacity="0.6" transform="rotate(-20 75 90)"/>
+  <!-- Eyes closed (sleeping) -->
+  <path d="M72 130 Q80 124 88 130" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <path d="M112 130 Q120 124 128 130" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <!-- Small zzz -->
+  <text x="135" y="95" font-family="Arial,sans-serif" font-size="18" font-weight="bold" fill="#94a3b8">z</text>
+  <text x="148" y="80" font-family="Arial,sans-serif" font-size="14" font-weight="bold" fill="#94a3b8">z</text>
+  <!-- Label -->
+  <text x="100" y="230" font-family="Arial,sans-serif" font-size="13" text-anchor="middle" fill="#94a3b8">Aguardando recebimento&</text>
+</svg>

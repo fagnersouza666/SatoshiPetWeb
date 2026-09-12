@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Satoshi Pet">
+  <!-- Full-bleed background for maskable (safe zone = inner 80% circle) -->
+  <rect width="512" height="512" fill="#f59e0b"/>
+  <!-- Bitcoin symbol stays within safe zone (radius ~204px centered at 256,256) -->
+  <text
+    x="256" y="330"
+    font-family="Arial, Helvetica, sans-serif"
+    font-size="240"
+    font-weight="900"
+    text-anchor="middle"
+    fill="#0f172a"
+  >¿</text>
+</svg>

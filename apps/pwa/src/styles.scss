@@ -1,1 +1,110 @@
-/* You can add global styles to this file, and also import other style files */
+// ─── Tokens de design (CSS Custom Properties) ─────────────────────────────────
+
+:root {
+  // Cores — tema claro
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-primary: #f59e0b;
+  --color-primary-dark: #d97706;
+  --color-danger: #dc2626;
+  --color-success: #16a34a;
+
+  // Tipografia
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif, 'Apple Color Emoji';
+  --font-mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo,
+    Consolas, 'DejaVu Sans Mono', monospace;
+
+  // Espaçamentos
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  // Raios de borda
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+}
+
+// Tema escuro — respeita preferência do sistema
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #0f172a;
+    --color-surface: #1e293b;
+    --color-border: #334155;
+    --color-text: #f8fafc;
+    --color-text-muted: #94a3b8;
+    --color-primary: #f59e0b;
+    --color-primary-dark: #fbbf24;
+  }
+}
+
+// ─── Reset e base ──────────────────────────────────────────────────────────────
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  // Evita reflow ao abrir/fechar scrollbar
+  scrollbar-gutter: stable;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100dvh;
+}
+
+// Foco visível acessível para teclado (WCAG 2.2 AA)
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+// Remove outline padrão em favor do :focus-visible
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+// Respeita preferência de movimento reduzido (WCAG 2.3 / e-MAG)
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+// ─── Utilitários globais ───────────────────────────────────────────────────────
+
+// Leitores de tela only
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
