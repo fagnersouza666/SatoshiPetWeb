@@ -224,10 +224,13 @@
     },
     "output": {
       "type": "object",
-      "required": ["vout", "amountSats"],
+      "required": ["vout", "address", "amountSats"],
       "properties": {
         "vout": {
           "$ref": "#/$defs/vout"
+        },
+        "address": {
+          "$ref": "#/$defs/address"
         },
         "amountSats": {
           "$ref": "#/$defs/positiveSats"
@@ -269,9 +272,9 @@
     },
     "outpoint": {
       "type": "object",
-      "required": ["transactionId", "vout"],
+      "required": ["txid", "vout"],
       "properties": {
-        "transactionId": {
+        "txid": {
           "$ref": "#/$defs/txid"
         },
         "vout": {
@@ -286,9 +289,9 @@
     },
     "reorgTransaction": {
       "type": "object",
-      "required": ["transactionId", "previousStatus", "currentStatus"],
+      "required": ["txid", "previousStatus", "currentStatus"],
       "properties": {
-        "transactionId": {
+        "txid": {
           "$ref": "#/$defs/txid"
         },
         "previousStatus": {
@@ -313,7 +316,7 @@
       "required": [
         "network",
         "address",
-        "transactionId",
+        "txid",
         "status",
         "source",
         "outputs",
@@ -326,7 +329,7 @@
         "address": {
           "$ref": "#/$defs/address"
         },
-        "transactionId": {
+        "txid": {
           "$ref": "#/$defs/txid"
         },
         "status": {
@@ -385,7 +388,7 @@
       "required": [
         "network",
         "address",
-        "transactionId",
+        "txid",
         "previousStatus",
         "status",
         "source",
@@ -400,7 +403,7 @@
         "address": {
           "$ref": "#/$defs/address"
         },
-        "transactionId": {
+        "txid": {
           "$ref": "#/$defs/txid"
         },
         "previousStatus": {
@@ -436,8 +439,8 @@
       "required": [
         "network",
         "address",
-        "replacedTransactionId",
-        "replacementTransactionId",
+        "replacedTxid",
+        "replacementTxid",
         "replacedStatus",
         "replacementStatus",
         "conflictInputs",
@@ -451,10 +454,10 @@
         "address": {
           "$ref": "#/$defs/address"
         },
-        "replacedTransactionId": {
+        "replacedTxid": {
           "$ref": "#/$defs/txid"
         },
-        "replacementTransactionId": {
+        "replacementTxid": {
           "$ref": "#/$defs/txid"
         },
         "replacedStatus": {
@@ -494,7 +497,7 @@
         "tip": {
           "$ref": "#/$defs/block"
         },
-        "replacementTransactionId": {
+        "replacementTxid": {
           "$ref": "#/$defs/txid"
         }
       },
@@ -520,7 +523,7 @@
             }
           },
           "then": {
-            "required": ["replacementTransactionId"]
+            "required": ["replacementTxid"]
           }
         }
       ],
@@ -531,7 +534,7 @@
       "required": [
         "network",
         "address",
-        "transactionId",
+        "txid",
         "previousStatus",
         "status",
         "reason",
@@ -545,7 +548,7 @@
         "address": {
           "$ref": "#/$defs/address"
         },
-        "transactionId": {
+        "txid": {
           "$ref": "#/$defs/txid"
         },
         "previousStatus": {

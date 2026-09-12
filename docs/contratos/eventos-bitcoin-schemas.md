@@ -49,11 +49,11 @@ em satoshis; o contrato não usa ponto flutuante, BTC decimal ou BRL.
 
 | Evento | Campos públicos do payload |
 | --- | --- |
-| `BITCOIN_TRANSACTION_OBSERVED` | `network`, `address`, `transactionId`, `status` (`MEMPOOL`/`CONFIRMED`), `source` (`MEMPOOL`/`BLOCK`), `outputs[]` (`vout`, `amountSats`), `totalReceivedSats` e `block` quando já houver confirmação. |
-| `BITCOIN_TRANSACTION_CONFIRMED` | `network`, `address`, `transactionId`, `previousStatus`, `status=CONFIRMED`, `source`, `outputs[]`, `totalReceivedSats` e `block` (`hash`, `height`, `confirmations`). A descoberta direta em bloco usa `previousStatus=UNKNOWN` e `source=BLOCK`. |
-| `BITCOIN_TRANSACTION_REPLACED` | `network`, `address`, `replacedTransactionId`, `replacementTransactionId`, `replacedStatus=REPLACED`, `replacementStatus`, `conflictInputs[]` (`transactionId`, `vout`), `replacedReceivedSats` e `replacementReceivedSats`. A evidência de conflito é obrigatória. |
-| `BITCOIN_TRANSACTION_DROPPED` | `network`, `address`, `transactionId`, `previousStatus`, `status=DROPPED`, `reason`, `evidence` e `invalidatedReceivedSats`. Ausência em uma resposta não é evidência válida: `RECONCILED_ABSENCE` exige `evidence.kind=RECONCILIATION`, `reconciledAt` e `tip`. |
-| `BITCOIN_CHAIN_REORG` | `network`, `address`, `oldTip`, `newTip`, `forkHeight`, `depth`, `affectedTransactions[]` (`transactionId`, estados anterior/atual e blocos quando conhecidos), `previousConfirmedBalanceSats` e `currentConfirmedBalanceSats`. `REORGED` não é estado de transação; o estado atual é `MEMPOOL`, `CONFIRMED` ou `UNKNOWN`. |
+| `BITCOIN_TRANSACTION_OBSERVED` | `network`, `address`, `txid`, `status` (`MEMPOOL`/`CONFIRMED`), `source` (`MEMPOOL`/`BLOCK`), `outputs[]` (`vout`, `address`, `amountSats`), `totalReceivedSats` e `block` quando já houver confirmação. |
+| `BITCOIN_TRANSACTION_CONFIRMED` | `network`, `address`, `txid`, `previousStatus`, `status=CONFIRMED`, `source`, `outputs[]`, `totalReceivedSats` e `block` (`hash`, `height`, `confirmations`). A descoberta direta em bloco usa `previousStatus=UNKNOWN` e `source=BLOCK`. |
+| `BITCOIN_TRANSACTION_REPLACED` | `network`, `address`, `replacedTxid`, `replacementTxid`, `replacedStatus=REPLACED`, `replacementStatus`, `conflictInputs[]` (`txid`, `vout`), `replacedReceivedSats` e `replacementReceivedSats`. A evidência de conflito é obrigatória. |
+| `BITCOIN_TRANSACTION_DROPPED` | `network`, `address`, `txid`, `previousStatus`, `status=DROPPED`, `reason`, `evidence` e `invalidatedReceivedSats`. Ausência em uma resposta não é evidência válida: `RECONCILED_ABSENCE` exige `evidence.kind=RECONCILIATION`, `reconciledAt` e `tip`. |
+| `BITCOIN_CHAIN_REORG` | `network`, `address`, `oldTip`, `newTip`, `forkHeight`, `depth`, `affectedTransactions[]` (`txid`, estados anterior/atual e blocos quando conhecidos), `previousConfirmedBalanceSats` e `currentConfirmedBalanceSats`. `REORGED` não é estado de transação; o estado atual é `MEMPOOL`, `CONFIRMED` ou `UNKNOWN`. |
 | `BITCOIN_BALANCE_RECONCILED` | `network`, `address`, `balanceStatus=KNOWN`, `confirmedBalanceSats`, `pendingIncomingSats`, `pendingOutgoingSats`, `transactionsReconciled` e `reconciliationTip`. Uma falha de provedor não deve produzir este evento com saldo artificialmente zero. |
 
 `address`, txids, vouts, hashes de bloco, alturas, confirmações e valores
@@ -66,8 +66,8 @@ apenas restringe a forma pública do valor.
 - `outputs` contém somente saídas destinadas ao `address` do payload. Cada
   `vout` aparece no máximo uma vez e `totalReceivedSats` é exatamente a soma
   de `amountSats` dessas saídas.
-- Em uma substituição, `replacedTransactionId` e
-  `replacementTransactionId` identificam transações distintas; a evidência de
+- Em uma substituição, `replacedTxid` e `replacementTxid` identificam
+  transações distintas; a evidência de
   conflito por entradas gastas é obrigatória. A troca atualiza o recebimento
   lógico e não representa uma segunda alimentação.
 - `BITCOIN_CHAIN_REORG` é um evento histórico. Nenhum payload usa `REORGED`
@@ -116,10 +116,10 @@ para idempotência alimentar permanecem fora deste schema público.
   "payload": {
     "network": "mainnet",
     "address": "bc1qexampleaddress000000000000000000000000",
-    "transactionId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "txid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "status": "MEMPOOL",
     "source": "MEMPOOL",
-    "outputs": [{"vout": 0, "amountSats": 3000}],
+    "outputs": [{"vout": 0, "address": "bc1qexampleaddress000000000000000000000000", "amountSats": 3000}],
     "totalReceivedSats": 3000
   }
 }
@@ -137,11 +137,11 @@ para idempotência alimentar permanecem fora deste schema público.
   "payload": {
     "network": "mainnet",
     "address": "bc1qexampleaddress000000000000000000000000",
-    "transactionId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "txid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "previousStatus": "UNKNOWN",
     "status": "CONFIRMED",
     "source": "BLOCK",
-    "outputs": [{"vout": 0, "amountSats": 3000}],
+    "outputs": [{"vout": 0, "address": "bc1qexampleaddress000000000000000000000000", "amountSats": 3000}],
     "totalReceivedSats": 3000,
     "block": {
       "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
