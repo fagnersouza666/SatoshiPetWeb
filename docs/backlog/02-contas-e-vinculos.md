@@ -22,6 +22,7 @@ Registro por e-mail (magic link), recuperação por código, vínculo conta↔en
 **Critérios de aceite:** CA-001  
 **Dependências:** FUND-02, integração e-mail (stub em dev)  
 **Notas técnicas:** Token hash armazenado; link expira em minutos configuráveis.
+O contrato de solicitação está em [docs/contratos/magic-link.md](../contratos/magic-link.md).
 
 ---
 
