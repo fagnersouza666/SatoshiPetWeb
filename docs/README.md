@@ -19,3 +19,25 @@ O backlog está organizado em épicos em [backlog/](./backlog/):
 Comece por [backlog/README.md](./backlog/README.md) e [backlog/00-definicao-tecnica.md](./backlog/00-definicao-tecnica.md).
 
 O [`.gitignore`](../.gitignore) na raiz do repositório exclui artefatos de build, segredos, volumes Docker e dados de Bitcoin de teste; o que entra ou não no Git está em [backlog/00-definicao-tecnica.md](./backlog/00-definicao-tecnica.md) §6.1.
+
+## Ferramentas e comandos do workspace
+
+As versões de referência ficam declaradas em [`.nvmrc`](../.nvmrc) (Node.js
+22.22.3) e [`.java-version`](../.java-version) (Java 25 LTS). O backend usa o
+Maven Wrapper versionado em `services/api/mvnw`, portanto não é necessário
+instalar Maven no host.
+
+Os comandos abaixo devem ser executados na raiz do repositório:
+
+| Comando | Finalidade |
+|---------|------------|
+| `npm run start` | Inicia a PWA Angular em desenvolvimento |
+| `npm run start:pwa` | Inicia somente a PWA Angular |
+| `npm run start:api` | Inicia a API Quarkus em modo dev |
+| `npm run build` | Compila PWA e API |
+| `npm run build:pwa` | Compila somente a PWA |
+| `npm run build:api` | Empacota somente a API, sem executar testes |
+| `npm test` | Executa os testes unitários da PWA e da API |
+| `npm run test:pwa` | Executa somente os testes da PWA, sem watch |
+| `npm run test:api` | Executa somente os testes da API |
+| `npm run verify` | Testa a PWA e executa `verify` da API |

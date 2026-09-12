@@ -282,6 +282,9 @@ LOCATION_CHANGE_APPLIED
 
 ```
 satoshi-pet-web/
+├── .java-version              # Java 25 LTS
+├── .nvmrc                      # Node.js 22.22.3
+├── package.json                # comandos raiz e faixa suportada do Node.js
 ├── .gitignore                  # build, IDE, segredos, volumes locais, regtest
 ├── apps/
 │   └── pwa/                    # Angular 22 PWA (produto principal)
@@ -315,6 +318,23 @@ Arquivo na raiz do repositório. Cobre o monorepo inteiro:
 | Bitcoin de teste | `infra/**/regtest/`, `signet/`, `wallet.dat` | Adaptadores e fixtures de teste (sem chaves) |
 
 Nunca versionar seed, chave privada, xprv ou senha de carteira.
+
+### 6.2 Comandos raiz
+
+O `package.json` da raiz padroniza a entrada no workspace e delega cada
+operação ao módulo correspondente. Os comandos agregados são:
+
+| Comando | Módulos |
+|---------|---------|
+| `npm run build` | `apps/pwa` e `services/api` |
+| `npm test` | testes da PWA e da API |
+| `npm run verify` | testes da PWA e `verify` da API, incluindo integrações quando habilitadas |
+
+Também há comandos específicos (`start:pwa`, `start:api`, `build:pwa`,
+`build:api`, `test:pwa` e `test:api`). A seleção do Node.js segue a matriz
+Angular: `^22.22.3 || ^24.15.0 || >=26.0.0`; o desenvolvimento padrão usa
+22.22.3 conforme o `.nvmrc`. O backend compila com Java 25 LTS e usa o Maven
+Wrapper de `services/api`.
 
 ---
 

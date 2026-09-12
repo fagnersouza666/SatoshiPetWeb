@@ -1,0 +1,20 @@
+{
+  "name": "satoshi-pet-web",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "^22.22.3 || ^24.15.0 || >=26.0.0"
+  },
+  "scripts": {
+    "start": "npm run start:pwa",
+    "start:pwa": "npm --prefix apps/pwa run start",
+    "start:api": "services/api/mvnw -f services/api/pom.xml quarkus:dev",
+    "build": "npm run build:pwa && npm run build:api",
+    "build:pwa": "npm --prefix apps/pwa run build",
+    "build:api": "services/api/mvnw -f services/api/pom.xml package -DskipTests",
+    "test": "npm run test:pwa && npm run test:api",
+    "test:pwa": "npm --prefix apps/pwa run test -- --watch=false",
+    "test:api": "services/api/mvnw -f services/api/pom.xml test",
+    "verify": "npm run test:pwa && services/api/mvnw -f services/api/pom.xml verify"
+  }
+}
