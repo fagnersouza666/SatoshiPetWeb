@@ -193,9 +193,11 @@ DCA, compra e localização permanecem nos respectivos contextos:
 | `BITCOIN_CHAIN_REORG` | Bloco/confirmações observados → cadeia reorganizada |
 | `BITCOIN_BALANCE_RECONCILED` | Ponto seguro → saldo e histórico reconciliados |
 
-O catálogo nomeia eventos e transições, mas não fixa payload, envelope,
-correlação ou transporte. Ausência de resposta do provedor não é descarte, e
-uma compra declarada nunca dispara `PET_FEEDING_APPLIED`.
+O catálogo nomeia eventos e transições. A projeção pública e a redaction do
+payload estão definidas em [eventos-bitcoin-redaction.md](../contratos/eventos-bitcoin-redaction.md);
+envelope, correlação e transporte permanecem nos contratos próprios. Ausência
+de resposta do provedor não é descarte, e uma compra declarada nunca dispara
+`PET_FEEDING_APPLIED`.
 
 ---
 

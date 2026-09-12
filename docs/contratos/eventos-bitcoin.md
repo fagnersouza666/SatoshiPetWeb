@@ -41,6 +41,7 @@ como `PET_FEEDING_APPLIED`, `PET_FEEDING_REVISED` e
 por eventos Bitcoin. Compra declarada, sugestão DCA e notificação também não
 geram alimentação.
 
-Os contratos de payload, correlação, ordenação, entrega pela outbox/WebSocket e
-redaction serão definidos nas atividades próprias, sem alterar estes nomes ou
-as transições catalogadas.
+Os contratos de payload, correlação, ordenação e entrega pela outbox/WebSocket
+serão definidos nas atividades próprias, sem alterar estes nomes ou as
+transições catalogadas. A projeção pública e a redaction dos eventos estão em
+[eventos-bitcoin-redaction.md](./eventos-bitcoin-redaction.md).
