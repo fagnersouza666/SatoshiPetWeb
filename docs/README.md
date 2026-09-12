@@ -57,3 +57,13 @@ Os comandos abaixo devem ser executados na raiz do repositório:
 | `./infra/scripts/versao.sh verificar` | Falha se as três versões divergirem |
 | `./infra/scripts/check-pwa.sh` | Prova local da PWA (`versao.sh verificar` + testes) |
 | `./infra/scripts/check-api.sh` | Prova local da API (`versao.sh verificar` + `mvnw verify`; exige Docker) |
+
+### Datasource da API
+
+O perfil `dev` conecta no PostgreSQL local em `localhost:5432/satoshi_pet`.
+Os valores padrão de desenvolvimento podem ser substituídos por
+`QUARKUS_DATASOURCE_JDBC_URL`, `QUARKUS_DATASOURCE_USERNAME` e
+`QUARKUS_DATASOURCE_PASSWORD`; o perfil de produção não possui fallback de
+credenciais. O perfil `test` mantém um banco H2 em memória para os testes
+unitários; o readiness check em `/q/health/ready` valida a disponibilidade do
+datasource.
