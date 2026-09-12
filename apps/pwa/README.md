@@ -44,6 +44,18 @@ To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use th
 ng test
 ```
 
+## Imagem Docker
+
+A imagem de produção compila a PWA em uma etapa Node.js e serve os arquivos
+estáticos com nginx. Execute os comandos a partir da raiz do monorepo:
+
+```bash
+docker build -f apps/pwa/Dockerfile -t satoshi-pet-web-pwa:local .
+docker run --rm -p 8080:80 satoshi-pet-web-pwa:local
+```
+
+Depois, acesse `http://localhost:8080/`.
+
 ## Running end-to-end tests
 
 For end-to-end (e2e) testing, run:
