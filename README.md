@@ -34,6 +34,7 @@ Com os containers em execução:
 | --- | --- |
 | PWA | <http://localhost:4200> |
 | API | <http://localhost:8080> |
+| PostgreSQL | `localhost:5432` |
 
 Para interromper os serviços, use `Ctrl+C` ou, em outro terminal:
 
@@ -48,11 +49,13 @@ PWA_PORT=4300 API_PORT=8180 \
   docker compose -f infra/docker-compose.yml up --build
 ```
 
-Nesta composição inicial, `pwa` e `api` são construídos a partir do contexto
-da raiz e usam `apps/pwa/Dockerfile` e `services/api/Dockerfile`. PostgreSQL,
-MinIO e o ambiente Bitcoin regtest serão acoplados por suas respectivas
-entregas do backlog. Nenhum serviço local deve ser substituído por Mainnet ou
-por envio de fundos reais durante os testes.
+Os valores de `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` e
+`POSTGRES_PORT` também podem ser substituídos por variáveis de ambiente. Os
+defaults são próprios para desenvolvimento local e não devem ser usados em
+produção. O volume nomeado `postgres-data` preserva os dados entre recriações
+dos containers. MinIO e o ambiente Bitcoin regtest serão acoplados por suas
+respectivas entregas do backlog. Nenhum serviço local deve ser substituído por
+Mainnet ou por envio de fundos reais durante os testes.
 
 ## Desenvolvimento sem a composição
 
