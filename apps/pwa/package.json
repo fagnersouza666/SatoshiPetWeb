@@ -2,11 +2,11 @@
   "name": "pwa",
   "version": "0.0.0",
   "scripts": {
-    "ng": "ng",
-    "start": "ng serve",
-    "build": "ng build",
-    "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "ng": "sh ../../scripts/with-node.sh ng",
+    "start": "sh ../../scripts/with-node.sh ng serve",
+    "build": "sh ../../scripts/with-node.sh ng build",
+    "watch": "sh ../../scripts/with-node.sh ng build --watch --configuration development",
+    "test": "sh ../../scripts/with-node.sh ng test"
   },
   "private": true,
   "packageManager": "npm@9.2.0",

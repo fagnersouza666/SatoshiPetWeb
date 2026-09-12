@@ -27,6 +27,10 @@ As versões de referência ficam declaradas em [`.nvmrc`](../.nvmrc) (Node.js
 Maven Wrapper versionado em `services/api/mvnw`, portanto não é necessário
 instalar Maven no host.
 
+Os scripts Angular usam `scripts/with-node.sh`, que executa o CLI com a versão
+do `.nvmrc` por meio do pacote `node` do npm. Assim, os gates de build e teste
+também funcionam em runners que não têm nvm, fnm, mise ou volta instalados.
+
 Os comandos abaixo devem ser executados na raiz do repositório:
 
 | Comando | Finalidade |
