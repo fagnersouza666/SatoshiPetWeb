@@ -1,0 +1,41 @@
+#!/bin/sh
+
+set -eu
+
+api_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+wrapper_properties="$api_dir/.mvn/wrapper/maven-wrapper.properties"
+
+distribution_url=$(awk -F= '$1 == "distributionUrl" { print substr($0, index($0, "=") + 1) }' "$wrapper_properties")
+distribution_sha256=$(awk -F= '$1 == "distributionSha256Sum" { print substr($0, index($0, "=") + 1) }' "$wrapper_properties")
+distribution_name=${distribution_url##*/}
+distribution_dir=${distribution_name%-bin.zip}
+wrapper_user_home=${MAVEN_USER_HOME:-${HOME}/.m2}
+wrapper_dist_dir="$wrapper_user_home/wrapper/dists/$distribution_dir"
+maven_home="$wrapper_dist_dir/$distribution_dir"
+
+if [ ! -x "$maven_home/bin/mvn" ]; then
+    download_dir=$(mktemp -d)
+    cleanup() {
+        rm -rf "$download_dir"
+    }
+    trap cleanup EXIT HUP INT TERM
+
+    archive="$download_dir/$distribution_name"
+    curl -fsSL "$distribution_url" -o "$archive"
+
+    if [ -n "$distribution_sha256" ]; then
+        actual_sha256=$(sha256sum "$archive" | awk '{ print $1 }')
+        if [ "$actual_sha256" != "$distribution_sha256" ]; then
+            echo "Checksum inválido para a distribuição Maven." >&2
+            exit 1
+        fi
+    fi
+
+    unzip -q "$archive" -d "$download_dir"
+    mkdir -p "$wrapper_dist_dir"
+    if [ ! -d "$maven_home" ]; then
+        mv "$download_dir/$distribution_dir" "$maven_home"
+    fi
+fi
+
+exec "$maven_home/bin/mvn" "$@"
