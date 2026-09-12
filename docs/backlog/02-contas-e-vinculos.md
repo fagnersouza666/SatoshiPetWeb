@@ -27,6 +27,7 @@ O contrato de persistência usa `magic_link_tokens` com `token_hash`, `issued_at
 (`consumed_at IS NULL` e `expires_at > agora`). O TTL é fornecido pela chave
 `satoshi-pet.magic-link.ttl`, sem valor padrão nesta atividade. O token bruto
 fica somente no fluxo emissor e nunca é persistido.
+O contrato de solicitação está em [docs/contratos/magic-link.md](../contratos/magic-link.md).
 
 ---
 
