@@ -179,6 +179,24 @@ Validar endereços Mainnet, monitorar saldo/transações via Esplora (porta para
 **Critérios de aceite:** —  
 **Dependências:** FUND-04, BTC-06  
 
+**Catálogo:** [eventos Bitcoin](../contratos/eventos-bitcoin.md) — versão 1.0.
+
+O monitor cobre diretamente as seis transições Bitcoin abaixo. Eventos de pet,
+DCA, compra e localização permanecem nos respectivos contextos:
+
+| Evento | Transição monitorada |
+| --- | --- |
+| `BITCOIN_TRANSACTION_OBSERVED` | Não registrada → observada na mempool ou diretamente em bloco |
+| `BITCOIN_TRANSACTION_CONFIRMED` | Observada/mempool ou descoberta direta → confirmada |
+| `BITCOIN_TRANSACTION_REPLACED` | Transação observada → substituída com evidência de conflito/RBF |
+| `BITCOIN_TRANSACTION_DROPPED` | Transação conhecida → descartada após evidência e reconciliação |
+| `BITCOIN_CHAIN_REORG` | Bloco/confirmações observados → cadeia reorganizada |
+| `BITCOIN_BALANCE_RECONCILED` | Ponto seguro → saldo e histórico reconciliados |
+
+O catálogo nomeia eventos e transições, mas não fixa payload, envelope,
+correlação ou transporte. Ausência de resposta do provedor não é descarte, e
+uma compra declarada nunca dispara `PET_FEEDING_APPLIED`.
+
 ---
 
 ## Definition of Done (épico)
