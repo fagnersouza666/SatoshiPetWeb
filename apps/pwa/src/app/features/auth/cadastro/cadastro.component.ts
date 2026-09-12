@@ -263,8 +263,12 @@ export class CadastroComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly fb = inject(FormBuilder);
 
-  /** Padrão básico de endereço Bitcoin: 26-62 caracteres alfanuméricos. */
-  private readonly BITCOIN_ADDRESS_PATTERN = /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$|^bc1[a-z0-9]{6,87}$/;
+  /**
+   * Padrão de validação de endereço Bitcoin (validação de primeiro nível — o servidor valida definitivamente).
+   * - Legacy P2PKH/P2SH: começa com `1` ou `3`, 25–34 chars totais (Base58Check).
+   * - Native SegWit bech32 (P2WPKH/P2WSH/Taproot): começa com `bc1`, 42–62 chars totais.
+   */
+  private readonly BITCOIN_ADDRESS_PATTERN = /^[13][a-km-zA-HJ-NP-Z1-9]{24,33}$|^bc1[a-z0-9]{39,59}$/;
 
   protected readonly carregando = signal(false);
   protected readonly erro = signal<string | null>(null);
