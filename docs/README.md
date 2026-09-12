@@ -8,6 +8,12 @@
 | [backlog/README.md](./backlog/README.md) | Backlog de implementação — índice, convenções e ordem de entrega |
 | [../AGENTS.md](../AGENTS.md) | Guia para agentes de IA — stack, invariantes e convenções do projeto |
 
+## Contratos
+
+| Documento | Descrição |
+|-----------|-----------|
+| [contratos/eventos-bitcoin.md](./contratos/eventos-bitcoin.md) | Catálogo versionado de eventos e transições do monitor Bitcoin |
+
 ## Backlog de implementação
 
 O backlog está organizado em épicos em [backlog/](./backlog/):
