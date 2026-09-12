@@ -12,9 +12,11 @@
     "build": "npm run build:pwa && npm run build:api",
     "build:pwa": "npm --prefix apps/pwa run build",
     "build:api": "services/api/mvnw -f services/api/pom.xml package -DskipTests",
-    "test": "npm run test:pwa && npm run test:api",
+    "test": "npm run test:versao && npm run test:pwa && npm run test:api",
+    "test:versao": "bash infra/scripts/versao.test.sh",
     "test:pwa": "npm --prefix apps/pwa run test -- --watch=false",
     "test:api": "services/api/mvnw -f services/api/pom.xml test",
-    "verify": "npm run test:pwa && services/api/mvnw -f services/api/pom.xml verify"
+    "verify": "bash infra/scripts/versao.sh verificar && npm run test:pwa && services/api/mvnw -f services/api/pom.xml verify",
+    "versao": "bash infra/scripts/versao.sh"
   }
 }

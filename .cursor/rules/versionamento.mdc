@@ -1,0 +1,36 @@
+---
+description: Incremento obrigatório da versão do produto (PWA e API juntos) em toda alteração e correção
+alwaysApply: true
+---
+
+# Versionamento do produto
+
+PWA (`apps/pwa/package.json`), API (`services/api/pom.xml`) e a raiz (`package.json`) **sempre na mesma versão de produto** (`X.Y.Z`). O POM usa o sufixo `-SNAPSHOT`. Nunca edite esses arquivos à mão — use o script.
+
+```bash
+./infra/scripts/versao.sh funcionalidade   # 1.0.0 → 1.1.0
+./infra/scripts/versao.sh corrigir          # 1.0.0 → 1.0.1
+./infra/scripts/versao.sh grande            # 1.0.0 → 2.0.0  (só se o usuário pedir)
+./infra/scripts/versao.sh verificar         # falha se divergirem
+./infra/scripts/versao.sh atual             # mostra e avisa
+```
+
+## Quando incrementar
+
+| Tipo | Comando | Exemplo |
+| --- | --- | --- |
+| Funcionalidade, alteração de comportamento, feature | `funcionalidade` | 1.0.0 → 1.1.0 |
+| Correção de bug ou defeito | `corrigir` | 1.0.0 → 1.0.1 |
+| Quebra grande / major | `grande` | **somente com pedido explícito** |
+
+## Regras
+
+- Toda alteração de produto (código em `apps/pwa/` ou `services/api/`) **incrementa no mesmo commit** da mudança.
+- Lote que mistura feature e correção: use `funcionalidade` (o do meio vence).
+- Só docs, chore, teste ou infra **sem** mudança de produto: **não** incremente; declare isso no resumo.
+- Nunca rode `grande` sem o usuário mandar. Nunca adivinhe major.
+- Depois do bump: promova `[Não lançado]` no `CHANGELOG.md` para `[X.Y.Z]` quando o arquivo existir.
+
+## Anti-padrão
+
+Editar `"version"` no `package.json` ou `<version>` no pom em separado, bumpar só um lado, deixar a versão para um commit posterior, ou acumular entregas em `[Não lançado]` sem incrementar.
