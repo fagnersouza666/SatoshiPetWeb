@@ -1,0 +1,26 @@
+---
+description: Prova local obrigatória (check-api.sh / check-pwa.sh) antes de commit e push
+alwaysApply: true
+---
+
+# Verificação local antes de commit e push
+
+Nunca faça `git commit` ou `git push` de código sem rodar antes a prova local da superfície tocada. A CI não substitui a verificação local.
+
+## Obrigatório
+
+- Mexeu em `apps/pwa/**` → rodar `./infra/scripts/check-pwa.sh` (`versao.sh verificar` + `npm run test:pwa`) e só prosseguir com tudo verde.
+- Mexeu em `services/api/**` → rodar `./infra/scripts/check-api.sh` (`versao.sh verificar` + `./mvnw verify`; exige Docker) e só prosseguir com tudo verde.
+- Mexeu nas duas superfícies → rodar os dois scripts.
+- Mexeu só em `docs/`, `.cursor/` ou infra sem código de produto → declarar isso no resumo da entrega em vez de rodar os scripts.
+
+## Anti-padrão
+
+`ng build` ou `mvnw compile` verde **não** significa testes verdes. O gate é o script completo (`check-pwa.sh` / `check-api.sh`), não uma etapa dele.
+
+## Se a CI falhar
+
+1. Reproduzir localmente com o script correspondente antes de qualquer correção.
+2. Corrigir a causa raiz, não o sintoma.
+3. Rodar o script inteiro de novo até ficar verde.
+4. Só então commitar e dar push.
