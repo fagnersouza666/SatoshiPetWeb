@@ -21,7 +21,7 @@ Estabelecer monorepo, pipeline, persistência, base do **PWA Angular instalável
 **Regras de negócio:** §16.1  
 **Critérios de aceite:** —  
 **Dependências:** —  
-**Notas técnicas:** Node ^22.22.3; Java 25; ver [00-definicao-tecnica.md](./00-definicao-tecnica.md) §6. O `.gitignore` da raiz já cobre Angular, Quarkus, Docker, segredos (PRD §17) e dados de regtest — ver §6.1 da definição técnica. Inclui `Dockerfile` de cada artefato e `infra/docker-compose.yml` com a stack completa (decisão §1.3 — tudo containerizado). Versão única de PWA e API via `infra/scripts/versao.sh`; prova local em `check-pwa.sh` e `check-api.sh`.
+**Notas técnicas:** Node ^22.22.3 (pin dev 22.23.2); Java 25; ver [00-definicao-tecnica.md](./00-definicao-tecnica.md) §6. O `.gitignore` da raiz já cobre Angular, Quarkus, Docker, segredos (PRD §17) e dados de regtest — ver §6.1 da definição técnica. Inclui `Dockerfile` de cada artefato e `infra/docker-compose.yml` com a stack completa (decisão §1.3 — tudo containerizado). Versão única de PWA e API via `infra/scripts/versao.sh`; prova local em `check-pwa.sh` e `check-api.sh`.
 
 ---
 

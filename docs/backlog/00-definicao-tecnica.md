@@ -113,9 +113,9 @@ flowchart TB
 
 | Componente | Versão / escolha | Notas |
 |------------|------------------|-------|
-| Angular | **22.1.5** (Active, suporte até jun/2028) | Standalone components, signals |
-| TypeScript | **≥6.0.0 <6.1.0** | Conforme matriz angular.dev |
-| Node.js | **^22.22.3 \|\| ^24.15.0 \|\| ^26.0.0** | Conforme matriz angular.dev |
+| Angular | **22.1.6** (Active, suporte até jun/2028) | Standalone components, signals |
+| TypeScript | **6.0.3** (`≥6.0.0 <6.1.0`) | Conforme matriz angular.dev |
+| Node.js | **^22.22.3 \|\| ^24.15.0 \|\| ^26.0.0** (pin dev: **22.23.2**) | Conforme matriz angular.dev |
 | RxJS | **^7.4.0** | Streams, WebSocket |
 | @angular/pwa | Incluso no CLI | Service worker `ngsw`, manifest |
 | Angular CDK | 22.x | A11y, overlay, focus trap |
@@ -283,7 +283,7 @@ LOCATION_CHANGE_APPLIED
 ```
 satoshi-pet-web/
 ├── .java-version              # Java 25 LTS
-├── .nvmrc                      # Node.js 22.22.3
+├── .nvmrc                      # Node.js 22.23.2
 ├── package.json                # comandos raiz e faixa suportada do Node.js
 ├── .gitignore                  # build, IDE, segredos, volumes locais, regtest
 ├── apps/
@@ -337,7 +337,7 @@ operação ao módulo correspondente. Os comandos agregados são:
 Também há comandos específicos (`start:pwa`, `start:api`, `build:pwa`,
 `build:api`, `test:pwa` e `test:api`). A seleção do Node.js segue a matriz
 Angular: `^22.22.3 || ^24.15.0 || >=26.0.0`; o desenvolvimento padrão usa
-22.22.3 conforme o `.nvmrc`. O backend compila com Java 25 LTS e usa o Maven
+22.23.2 conforme o `.nvmrc`. O backend compila com Java 25 LTS e usa o Maven
 Wrapper de `services/api`.
 
 ---

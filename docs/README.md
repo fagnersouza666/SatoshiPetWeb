@@ -30,7 +30,7 @@ O [`.gitignore`](../.gitignore) na raiz do repositório exclui artefatos de buil
 ## Ferramentas e comandos do workspace
 
 As versões de referência ficam declaradas em [`.nvmrc`](../.nvmrc) (Node.js
-22.22.3) e [`.java-version`](../.java-version) (Java 25 LTS). O backend usa o
+22.23.2) e [`.java-version`](../.java-version) (Java 25 LTS). O backend usa o
 Maven Wrapper versionado em `services/api/mvnw`, portanto não é necessário
 instalar Maven no host.
 
