@@ -1,0 +1,208 @@
+# Satoshi Pet Web — monorepo Angular 22 + Quarkus 3.33 + Docker
+# Fontes: github/gitignore (Node, Java, Maven, Windows, macOS, VS Code)
+#         quarkusio/quarkus-quickstarts, Angular CLI, Quarkus Config Guide
+
+# ---------------------------------------------------------------------------
+# Sistema operacional
+# ---------------------------------------------------------------------------
+.DS_Store
+**/.DS_Store
+.localized
+__MACOSX/
+.AppleDouble
+.LSOverride
+._*
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+*.stackdump
+
+# ---------------------------------------------------------------------------
+# Editores e IDEs
+# ---------------------------------------------------------------------------
+.idea/
+*.iml
+*.iws
+*.ipr
+.project
+.classpath
+.settings/
+.factorypath
+*.swp
+*.swo
+*~
+.history/
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# ---------------------------------------------------------------------------
+# Segredos e configuração local (PRD §17 — nunca versionar)
+# Quarkus: https://quarkus.io/guides/config — usar .env fora do VCS
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.template
+*.pem
+*.p12
+*.jks
+*.key
+!*.key.example
+secrets/
+**/secrets/
+*.local
+!*.local.example
+application-local.properties
+application-local.yml
+application-*.local.properties
+application-*.local.yml
+http-client.private.env.json
+
+# Chaves VAPID privadas e credenciais de provedores
+vapid-private*
+*vapid*private*
+
+# Nunca versionar material de custódia Bitcoin (o sistema não guarda fundos)
+wallet.dat
+*.wallet
+seed.txt
+mnemonic.txt
+xprv*
+xpriv*
+
+# ---------------------------------------------------------------------------
+# Node.js / Angular 22 PWA (apps/pwa, packages/*)
+# ---------------------------------------------------------------------------
+node_modules/
+jspm_packages/
+.pnpm-store/
+.npm
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
+.yarn-integrity
+
+dist/
+.angular/
+.vite/
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+typings/
+.ng_pkg_build/
+.sass-cache/
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+.ng-dev.log
+.ng-dev.err*.log
+*.tgz
+
+# Vite timestamps (dev)
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# ---------------------------------------------------------------------------
+# Java 25 / Quarkus / Maven (services/api)
+# ---------------------------------------------------------------------------
+target/
+.quarkus/
+*.class
+hs_err_pid*
+replay_pid*
+quarkus.log
+.mvn/timing.properties
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+
+# Maven Wrapper deve permanecer versionado (Quarkus/quickstarts)
+!.mvn/wrapper/maven-wrapper.jar
+
+# Imagem nativa GraalVM copiada para fora de target/ (o build já cai em target/)
+**/*-SNAPSHOT-runner
+**/*-runner.so
+**/*-runner.exe
+
+# Eclipse output em módulos Java
+services/**/bin/
+
+# ---------------------------------------------------------------------------
+# Docker, volumes locais e dados de containers
+# (compose, Dockerfiles e manifests k8s DEVEM ser versionados)
+# ---------------------------------------------------------------------------
+docker-compose.override.yml
+!docker-compose.override.yml.example
+infra/data/
+infra/volumes/
+**/.data/
+postgres-data/
+minio-data/
+redis-data/
+bitcoin-data/
+
+# ---------------------------------------------------------------------------
+# Bitcoin regtest / signet (dados de nó e carteira de teste)
+# Não usar `blocks/` ou `chainstate/` globais — colidem com pastas de UI.
+# ---------------------------------------------------------------------------
+infra/**/regtest/
+infra/**/signet/
+infra/**/testnet3/
+infra/**/testnet4/
+
+# ---------------------------------------------------------------------------
+# Testes, cobertura e relatórios gerados
+# ---------------------------------------------------------------------------
+coverage/
+*.lcov
+.nyc_output/
+karma-coverage/
+htmlcov/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+lib-cov/
+
+# ---------------------------------------------------------------------------
+# Logs e temporários
+# ---------------------------------------------------------------------------
+logs/
+*.log
+tmp/
+*.tmp
+*.temp
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+pids
+*.pid
+*.pid.lock
+
+# ---------------------------------------------------------------------------
+# Ferramentas locais (Cursor / sessões)
+# ---------------------------------------------------------------------------
+.cursor/debug.log
+.cursor/*.log
+)
