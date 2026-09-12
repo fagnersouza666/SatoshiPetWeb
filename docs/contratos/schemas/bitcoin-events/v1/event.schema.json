@@ -1,0 +1,725 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:satoshi-pet-web:contracts:bitcoin-events:v1",
+  "title": "Evento público do monitor Bitcoin",
+  "description": "Envelope versionado para os seis eventos BITCOIN_* do monitor. O schema contém somente fatos públicos on-chain e metadados opacos de correlação.",
+  "type": "object",
+  "required": [
+    "eventId",
+    "eventType",
+    "schemaVersion",
+    "occurredAt",
+    "correlationId",
+    "payload"
+  ],
+  "properties": {
+    "eventId": {
+      "$ref": "#/$defs/uuid",
+      "description": "Identidade imutável desta ocorrência lógica. Retransmissões preservam o mesmo valor."
+    },
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "BITCOIN_TRANSACTION_OBSERVED",
+        "BITCOIN_TRANSACTION_CONFIRMED",
+        "BITCOIN_TRANSACTION_REPLACED",
+        "BITCOIN_TRANSACTION_DROPPED",
+        "BITCOIN_CHAIN_REORG",
+        "BITCOIN_BALANCE_RECONCILED"
+      ]
+    },
+    "schemaVersion": {
+      "const": 1,
+      "description": "Versão inteira do envelope e do payload. Mudanças incompatíveis criam uma nova versão."
+    },
+    "occurredAt": {
+      "$ref": "#/$defs/dateTime",
+      "description": "Instante em que a transição foi observada ou concluída, em UTC."
+    },
+    "correlationId": {
+      "$ref": "#/$defs/uuid",
+      "description": "Identifica a operação de monitoramento ou reconciliação que produziu a ocorrência; não é ID de conta."
+    },
+    "causationId": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/uuid"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "eventId da ocorrência imediatamente causadora; nulo ou ausente para uma raiz."
+    },
+    "payload": {
+      "type": "object",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/transactionObservedPayload"
+        },
+        {
+          "$ref": "#/$defs/transactionConfirmedPayload"
+        },
+        {
+          "$ref": "#/$defs/transactionReplacedPayload"
+        },
+        {
+          "$ref": "#/$defs/transactionDroppedPayload"
+        },
+        {
+          "$ref": "#/$defs/chainReorgPayload"
+        },
+        {
+          "$ref": "#/$defs/balanceReconciledPayload"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["eventType"],
+        "properties": {
+          "eventType": {
+            "const": "BITCOIN_TRANSACTION_OBSERVED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/transactionObservedPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["eventType"],
+        "properties": {
+          "eventType": {
+            "const": "BITCOIN_TRANSACTION_CONFIRMED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/transactionConfirmedPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["eventType"],
+        "properties": {
+          "eventType": {
+            "const": "BITCOIN_TRANSACTION_REPLACED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/transactionReplacedPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["eventType"],
+        "properties": {
+          "eventType": {
+            "const": "BITCOIN_TRANSACTION_DROPPED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/transactionDroppedPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["eventType"],
+        "properties": {
+          "eventType": {
+            "const": "BITCOIN_CHAIN_REORG"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/chainReorgPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["eventType"],
+        "properties": {
+          "eventType": {
+            "const": "BITCOIN_BALANCE_RECONCILED"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/balanceReconciledPayload"
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false,
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "dateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "network": {
+      "type": "string",
+      "enum": ["mainnet", "testnet", "regtest", "signet"],
+      "description": "Rede Bitcoin. Produção aceita somente mainnet; as demais redes são destinadas a testes."
+    },
+    "address": {
+      "type": "string",
+      "minLength": 14,
+      "maxLength": 90,
+      "pattern": "^[A-Za-z0-9]+$",
+      "description": "Endereço Bitcoin canônico, sem validar checksum neste contrato."
+    },
+    "txid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Identificador de transação em hexadecimal minúsculo."
+    },
+    "sats": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Quantidade inteira de satoshis; nunca um número fracionário ou valor em BRL."
+    },
+    "positiveSats": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Quantidade inteira positiva de satoshis."
+    },
+    "vout": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "output": {
+      "type": "object",
+      "required": ["vout", "amountSats"],
+      "properties": {
+        "vout": {
+          "$ref": "#/$defs/vout"
+        },
+        "amountSats": {
+          "$ref": "#/$defs/positiveSats"
+        }
+      },
+      "additionalProperties": false
+    },
+    "block": {
+      "type": "object",
+      "required": ["hash", "height"],
+      "properties": {
+        "hash": {
+          "$ref": "#/$defs/txid"
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "confirmedBlock": {
+      "type": "object",
+      "required": ["hash", "height", "confirmations"],
+      "properties": {
+        "hash": {
+          "$ref": "#/$defs/txid"
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "confirmations": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "outpoint": {
+      "type": "object",
+      "required": ["transactionId", "vout"],
+      "properties": {
+        "transactionId": {
+          "$ref": "#/$defs/txid"
+        },
+        "vout": {
+          "$ref": "#/$defs/vout"
+        }
+      },
+      "additionalProperties": false
+    },
+    "transactionStatus": {
+      "type": "string",
+      "enum": ["MEMPOOL", "CONFIRMED", "REPLACED", "DROPPED", "UNKNOWN"]
+    },
+    "reorgTransaction": {
+      "type": "object",
+      "required": ["transactionId", "previousStatus", "currentStatus"],
+      "properties": {
+        "transactionId": {
+          "$ref": "#/$defs/txid"
+        },
+        "previousStatus": {
+          "type": "string",
+          "enum": ["MEMPOOL", "CONFIRMED", "UNKNOWN"]
+        },
+        "currentStatus": {
+          "type": "string",
+          "enum": ["MEMPOOL", "CONFIRMED", "UNKNOWN"]
+        },
+        "previousBlock": {
+          "$ref": "#/$defs/block"
+        },
+        "currentBlock": {
+          "$ref": "#/$defs/block"
+        }
+      },
+      "additionalProperties": false
+    },
+    "transactionObservedPayload": {
+      "type": "object",
+      "required": [
+        "network",
+        "address",
+        "transactionId",
+        "status",
+        "source",
+        "outputs",
+        "totalReceivedSats"
+      ],
+      "properties": {
+        "network": {
+          "$ref": "#/$defs/network"
+        },
+        "address": {
+          "$ref": "#/$defs/address"
+        },
+        "transactionId": {
+          "$ref": "#/$defs/txid"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["MEMPOOL", "CONFIRMED"]
+        },
+        "source": {
+          "type": "string",
+          "enum": ["MEMPOOL", "BLOCK"]
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/output"
+          }
+        },
+        "totalReceivedSats": {
+          "$ref": "#/$defs/positiveSats"
+        },
+        "block": {
+          "$ref": "#/$defs/confirmedBlock"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "CONFIRMED"
+              }
+            }
+          },
+          "then": {
+            "required": ["block"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "source": {
+                "const": "BLOCK"
+              }
+            }
+          },
+          "then": {
+            "required": ["block"]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "transactionConfirmedPayload": {
+      "type": "object",
+      "required": [
+        "network",
+        "address",
+        "transactionId",
+        "previousStatus",
+        "status",
+        "source",
+        "outputs",
+        "totalReceivedSats",
+        "block"
+      ],
+      "properties": {
+        "network": {
+          "$ref": "#/$defs/network"
+        },
+        "address": {
+          "$ref": "#/$defs/address"
+        },
+        "transactionId": {
+          "$ref": "#/$defs/txid"
+        },
+        "previousStatus": {
+          "type": "string",
+          "enum": ["MEMPOOL", "UNKNOWN"]
+        },
+        "status": {
+          "const": "CONFIRMED"
+        },
+        "source": {
+          "type": "string",
+          "enum": ["MEMPOOL", "BLOCK"]
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/output"
+          }
+        },
+        "totalReceivedSats": {
+          "$ref": "#/$defs/positiveSats"
+        },
+        "block": {
+          "$ref": "#/$defs/confirmedBlock"
+        }
+      },
+      "additionalProperties": false
+    },
+    "transactionReplacedPayload": {
+      "type": "object",
+      "required": [
+        "network",
+        "address",
+        "replacedTransactionId",
+        "replacementTransactionId",
+        "replacedStatus",
+        "replacementStatus",
+        "conflictInputs",
+        "replacedReceivedSats",
+        "replacementReceivedSats"
+      ],
+      "properties": {
+        "network": {
+          "$ref": "#/$defs/network"
+        },
+        "address": {
+          "$ref": "#/$defs/address"
+        },
+        "replacedTransactionId": {
+          "$ref": "#/$defs/txid"
+        },
+        "replacementTransactionId": {
+          "$ref": "#/$defs/txid"
+        },
+        "replacedStatus": {
+          "const": "REPLACED"
+        },
+        "replacementStatus": {
+          "type": "string",
+          "enum": ["MEMPOOL", "CONFIRMED"]
+        },
+        "conflictInputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/outpoint"
+          }
+        },
+        "replacedReceivedSats": {
+          "$ref": "#/$defs/sats"
+        },
+        "replacementReceivedSats": {
+          "$ref": "#/$defs/sats"
+        }
+      },
+      "additionalProperties": false
+    },
+    "dropEvidence": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["RECONCILIATION", "CONFLICT", "INVALIDATION"]
+        },
+        "reconciledAt": {
+          "$ref": "#/$defs/dateTime"
+        },
+        "tip": {
+          "$ref": "#/$defs/block"
+        },
+        "replacementTransactionId": {
+          "$ref": "#/$defs/txid"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "RECONCILIATION"
+              }
+            }
+          },
+          "then": {
+            "required": ["reconciledAt", "tip"]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "CONFLICT"
+              }
+            }
+          },
+          "then": {
+            "required": ["replacementTransactionId"]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "transactionDroppedPayload": {
+      "type": "object",
+      "required": [
+        "network",
+        "address",
+        "transactionId",
+        "previousStatus",
+        "status",
+        "reason",
+        "evidence",
+        "invalidatedReceivedSats"
+      ],
+      "properties": {
+        "network": {
+          "$ref": "#/$defs/network"
+        },
+        "address": {
+          "$ref": "#/$defs/address"
+        },
+        "transactionId": {
+          "$ref": "#/$defs/txid"
+        },
+        "previousStatus": {
+          "type": "string",
+          "enum": ["MEMPOOL", "CONFIRMED", "REPLACED", "UNKNOWN"]
+        },
+        "status": {
+          "const": "DROPPED"
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["RECONCILED_ABSENCE", "REPLACED", "INVALIDATED"]
+        },
+        "evidence": {
+          "$ref": "#/$defs/dropEvidence"
+        },
+        "invalidatedReceivedSats": {
+          "$ref": "#/$defs/sats"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "RECONCILED_ABSENCE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "evidence": {
+                "properties": {
+                  "kind": {
+                    "const": "RECONCILIATION"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "REPLACED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "evidence": {
+                "properties": {
+                  "kind": {
+                    "const": "CONFLICT"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "reason": {
+                "const": "INVALIDATED"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "evidence": {
+                "properties": {
+                  "kind": {
+                    "const": "INVALIDATION"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "chainReorgPayload": {
+      "type": "object",
+      "required": [
+        "network",
+        "address",
+        "oldTip",
+        "newTip",
+        "forkHeight",
+        "depth",
+        "affectedTransactions",
+        "previousConfirmedBalanceSats",
+        "currentConfirmedBalanceSats"
+      ],
+      "properties": {
+        "network": {
+          "$ref": "#/$defs/network"
+        },
+        "address": {
+          "$ref": "#/$defs/address"
+        },
+        "oldTip": {
+          "$ref": "#/$defs/block"
+        },
+        "newTip": {
+          "$ref": "#/$defs/block"
+        },
+        "forkHeight": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "affectedTransactions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/reorgTransaction"
+          }
+        },
+        "previousConfirmedBalanceSats": {
+          "$ref": "#/$defs/sats"
+        },
+        "currentConfirmedBalanceSats": {
+          "$ref": "#/$defs/sats"
+        }
+      },
+      "additionalProperties": false
+    },
+    "balanceReconciledPayload": {
+      "type": "object",
+      "required": [
+        "network",
+        "address",
+        "balanceStatus",
+        "confirmedBalanceSats",
+        "pendingIncomingSats",
+        "pendingOutgoingSats",
+        "transactionsReconciled",
+        "reconciliationTip"
+      ],
+      "properties": {
+        "network": {
+          "$ref": "#/$defs/network"
+        },
+        "address": {
+          "$ref": "#/$defs/address"
+        },
+        "balanceStatus": {
+          "const": "KNOWN"
+        },
+        "confirmedBalanceSats": {
+          "$ref": "#/$defs/sats"
+        },
+        "pendingIncomingSats": {
+          "$ref": "#/$defs/sats"
+        },
+        "pendingOutgoingSats": {
+          "$ref": "#/$defs/sats"
+        },
+        "transactionsReconciled": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reconciliationTip": {
+          "$ref": "#/$defs/block"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
