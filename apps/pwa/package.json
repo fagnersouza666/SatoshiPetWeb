@@ -1,12 +1,12 @@
 {
   "name": "pwa",
-  "version": "0.2.0",
+  "version": "1.1.0",
   "scripts": {
-    "ng": "sh ../../scripts/with-node.sh ng",
-    "start": "sh ../../scripts/with-node.sh ng serve",
-    "build": "sh ../../scripts/with-node.sh ng build",
-    "watch": "sh ../../scripts/with-node.sh ng build --watch --configuration development",
-    "test": "sh ../../scripts/with-node.sh ng test"
+    "ng": "node ../../scripts/with-node.mjs ng",
+    "start": "node ../../scripts/with-node.mjs ng serve",
+    "build": "node ../../scripts/with-node.mjs ng build",
+    "watch": "node ../../scripts/with-node.mjs ng build --watch --configuration development",
+    "test": "node ../../scripts/with-node.mjs ng test"
   },
   "private": true,
   "packageManager": "npm@12.0.2",

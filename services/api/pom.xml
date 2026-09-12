@@ -6,7 +6,7 @@
 
     <groupId>br.com.satoshipet</groupId>
     <artifactId>satoshi-pet-api</artifactId>
-    <version>0.2.0-SNAPSHOT</version>
+    <version>1.1.0-SNAPSHOT</version>
     <packaging>quarkus</packaging>
 
     <properties>
@@ -203,6 +203,13 @@
                 <quarkus.package.jar.enabled>false</quarkus.package.jar.enabled>
                 <skipITs>false</skipITs>
                 <quarkus.native.enabled>true</quarkus.native.enabled>
+            </properties>
+        </profile>
+        <!-- Perfil CI: habilita testes de integração (IT) junto com os unitários -->
+        <profile>
+            <id>ci</id>
+            <properties>
+                <skipITs>false</skipITs>
             </properties>
         </profile>
     </profiles>

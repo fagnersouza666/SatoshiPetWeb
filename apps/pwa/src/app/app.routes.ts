@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { ShellComponent } from './shell/shell.component';
+import { authGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
   {
@@ -11,7 +12,6 @@ export const routes: Routes = [
 
       // ─── Autenticação (épico CONTA) ──────────────────────────────
       {
-        // Agrupa as rotas de autenticação; ShellComponent continua sendo o layout
         path: 'entrar',
         children: [
           {
@@ -45,9 +45,10 @@ export const routes: Routes = [
           ),
       },
 
-      // ─── Conta autenticada (épico CONTA) ─────────────────────────
+      // ─── Conta autenticada (épico CONTA) — protegida por authGuard ───
       {
         path: 'conta',
+        canActivate: [authGuard],
         loadComponent: () =>
           import('./features/conta/conta.component').then(
             (m) => m.ContaComponent,
