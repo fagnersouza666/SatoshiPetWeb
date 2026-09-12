@@ -18,9 +18,11 @@ public final class BitcoinReorgFixture {
     public static final String LOGICAL_RECEIPT_ID = "logical-receipt-reorg-001";
     public static final String TXID = "f6".repeat(32);
     public static final String OLD_BLOCK_HASH = "a7".repeat(32);
+    public static final String OLD_TIP_HASH = "9a".repeat(32);
     public static final String NEW_TIP_HASH = "b8".repeat(32);
     public static final String NEW_BLOCK_HASH = "c9".repeat(32);
     public static final int OLD_BLOCK_HEIGHT = 200;
+    public static final int OLD_TIP_HEIGHT = 202;
     public static final int NEW_TIP_HEIGHT = 202;
     public static final int NEW_BLOCK_HEIGHT = 201;
     public static final long RECEIVED_SATS = 100_000L;
@@ -98,10 +100,12 @@ public final class BitcoinReorgFixture {
         return new ReorgEvent(
                 REORG_EVENT_ID,
                 NETWORK,
-                OLD_BLOCK_HASH,
+                OLD_TIP_HASH,
+                OLD_TIP_HEIGHT,
                 NEW_TIP_HASH,
-                List.of(OLD_BLOCK_HASH),
-                List.of(NEW_TIP_HASH, NEW_BLOCK_HASH),
+                NEW_TIP_HEIGHT,
+                List.of(OLD_BLOCK_HASH, OLD_TIP_HASH),
+                List.of(NEW_BLOCK_HASH, NEW_TIP_HASH),
                 List.of(TXID),
                 REORG_AT
         );
@@ -147,7 +151,9 @@ public final class BitcoinReorgFixture {
             String eventId,
             String network,
             String oldTipHash,
+            int oldTipHeight,
             String newTipHash,
+            int newTipHeight,
             List<String> detachedBlockHashes,
             List<String> attachedBlockHashes,
             List<String> affectedTxids,

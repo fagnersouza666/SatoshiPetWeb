@@ -65,10 +65,12 @@ class BitcoinReorgFixtureTest {
         BitcoinReorgFixture.ReorgEvent event = BitcoinReorgFixture.reorg();
 
         assertEquals(BitcoinReorgFixture.REORG_EVENT_ID, event.eventId());
-        assertEquals(BitcoinReorgFixture.OLD_BLOCK_HASH, event.oldTipHash());
+        assertEquals(BitcoinReorgFixture.OLD_TIP_HASH, event.oldTipHash());
+        assertEquals(BitcoinReorgFixture.OLD_TIP_HEIGHT, event.oldTipHeight());
         assertEquals(BitcoinReorgFixture.NEW_TIP_HASH, event.newTipHash());
-        assertEquals(List.of(BitcoinReorgFixture.OLD_BLOCK_HASH), event.detachedBlockHashes());
-        assertEquals(List.of(BitcoinReorgFixture.NEW_TIP_HASH, BitcoinReorgFixture.NEW_BLOCK_HASH), event.attachedBlockHashes());
+        assertEquals(BitcoinReorgFixture.NEW_TIP_HEIGHT, event.newTipHeight());
+        assertEquals(List.of(BitcoinReorgFixture.OLD_BLOCK_HASH, BitcoinReorgFixture.OLD_TIP_HASH), event.detachedBlockHashes());
+        assertEquals(List.of(BitcoinReorgFixture.NEW_BLOCK_HASH, BitcoinReorgFixture.NEW_TIP_HASH), event.attachedBlockHashes());
         assertEquals(List.of(BitcoinReorgFixture.TXID), event.affectedTxids());
     }
 
