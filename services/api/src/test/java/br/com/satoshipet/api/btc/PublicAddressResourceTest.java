@@ -1,6 +1,11 @@
 package br.com.satoshipet.api.btc;
 
+import br.com.satoshipet.api.account.Account;
+import br.com.satoshipet.api.account.AccountAddressBinding;
 import br.com.satoshipet.api.account.Address;
+import br.com.satoshipet.api.pet.Pet;
+import br.com.satoshipet.api.pet.PetFeeding;
+import br.com.satoshipet.api.pet.PetReferencePortion;
 import br.com.satoshipet.api.support.bitcoin.BitcoinTestAddresses;
 import br.com.satoshipet.api.support.bitcoin.BitcoinTransactionFixture;
 import io.quarkus.test.junit.QuarkusTest;
@@ -12,6 +17,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
@@ -41,27 +48,49 @@ class PublicAddressResourceTest {
     @BeforeEach
     void setup() {
         stub.reset();
+        QuarkusTransaction.requiringNew().run(() -> deletarEnderecoDeFixture(FIXTURE_ADDR));
         QuarkusTransaction.requiringNew().run(() -> {
-            Address.findByCanonical(FIXTURE_ADDR).orElseGet(() -> {
-                Address a = Address.create(FIXTURE_ADDR, Instant.now());
-                a.persist();
-                return a;
-            });
+            Address a = Address.create(FIXTURE_ADDR, Instant.now());
+            a.persist();
         });
     }
 
     @AfterEach
     void teardown() {
-        QuarkusTransaction.requiringNew().run(() -> {
-            Address.findByCanonical(FIXTURE_ADDR).ifPresent(address -> {
-                LogicalReceipt.find("address", address).list()
-                        .forEach(r -> ((LogicalReceipt) r).delete());
-                BitcoinTransaction.find("address", address).list()
-                        .forEach(t -> ((BitcoinTransaction) t).delete());
-                address.delete();
-            });
-        });
+        QuarkusTransaction.requiringNew().run(() -> deletarEnderecoDeFixture(FIXTURE_ADDR));
         stub.reset();
+    }
+
+    private void deletarEnderecoDeFixture(String canonical) {
+        Address.findByCanonical(canonical).ifPresent(address -> {
+            List<Account> contas = new ArrayList<>();
+            Pet.findByAddress(address).ifPresent(pet -> {
+                PetFeeding.delete("pet", pet);
+                PetReferencePortion.delete("pet", pet);
+                contas.add(pet.creatorAccount);
+                pet.delete();
+            });
+            AccountAddressBinding.find("address", address).<AccountAddressBinding>list()
+                    .forEach(binding -> {
+                        contas.add(binding.account);
+                        binding.delete();
+                    });
+            LogicalReceipt.find("address", address).list()
+                    .forEach(r -> ((LogicalReceipt) r).delete());
+            BitcoinTransaction.find("address", address).list()
+                    .forEach(t -> ((BitcoinTransaction) t).delete());
+            AddressMonitorState.findByAddress(address).ifPresent(state -> state.delete());
+            address.delete();
+            contas.stream()
+                    .map(conta -> conta.id)
+                    .distinct()
+                    .forEach(id -> {
+                        Account conta = Account.findById(id);
+                        if (conta != null) {
+                            conta.delete();
+                        }
+                    });
+        });
     }
 
     // -------------------------------------------------------------------------
