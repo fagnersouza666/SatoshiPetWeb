@@ -46,6 +46,8 @@ services:
     restart: unless-stopped
     ports: !reset []
     environment:
+      # Obrigatório em produção; nunca herdar o padrão de localhost do dev.
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:?variável CORS_ALLOWED_ORIGINS obrigatória em produção}"
       # Substitui as configurações de dev pelo provedor de e-mail real
       QUARKUS_MAILER_HOST: "${MAIL_HOST:?variável MAIL_HOST obrigatória em produção}"
       QUARKUS_MAILER_PORT: "${MAIL_PORT:-587}"
