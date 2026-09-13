@@ -15,6 +15,11 @@ FROM maven:3.9-eclipse-temurin-25 AS build
 
 WORKDIR /workspace
 
+# O Maven Wrapper usa unzip para extrair a distribuição do Maven.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends unzip \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copia o descritor e o wrapper antes do código para reutilizar o cache de
 # dependências quando apenas o código-fonte muda.
 COPY services/api/pom.xml services/api/mvnw ./
