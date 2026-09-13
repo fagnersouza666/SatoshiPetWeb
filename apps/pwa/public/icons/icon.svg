@@ -1,12 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Satoshi Pet">
-  <rect width="512" height="512" rx="96" fill="#0f172a"/>
-  <circle cx="256" cy="256" r="180" fill="#f59e0b"/>
-  <text
-    x="256" y="330"
-    font-family="Arial, Helvetica, sans-serif"
-    font-size="280"
-    font-weight="900"
-    text-anchor="middle"
-    fill="#0f172a"
-  >¿</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Satoshi Pet</title>
+  <rect width="512" height="512" rx="87" fill="#0f172a"/>
+  <circle cx="256" cy="256" r="184" fill="#f59e0b"/>
+  <g fill="#0f172a">
+    <rect x="207" y="143" width="46" height="226" rx="10"/>
+    <rect x="230" y="143" width="102" height="118" rx="46"/>
+    <rect x="230" y="250" width="118" height="118" rx="50"/>
+    <rect x="179" y="112" width="24" height="62" rx="12"/>
+    <rect x="179" y="338" width="24" height="62" rx="12"/>
+  </g>
+  <g fill="#f59e0b">
+    <rect x="253" y="184" width="54" height="48" rx="16"/>
+    <rect x="253" y="287" width="62" height="51" rx="16"/>
+  </g>
 </svg>
