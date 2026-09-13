@@ -76,7 +76,9 @@ Estabelecer monorepo, pipeline, persistência, base do **PWA Angular instalável
 **Regras de negócio:** §11, §16.4  
 **Critérios de aceite:** CA-058 (base)  
 **Dependências:** FUND-02  
-**Notas técnicas:** Usar `JobLock` com TTL e renovação.
+**Notas técnicas:** Usar `JobLock` com TTL e renovação. A renovação só é
+aceita pelo proprietário enquanto o lock ainda estiver ativo; lock expirado
+deve ser assumido por outra instância.
 
 ---
 

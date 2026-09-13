@@ -47,7 +47,7 @@ public class JobLockService {
     public boolean acquire(String jobName, String ownerId, Duration ttl) {
         Objects.requireNonNull(jobName, "jobName");
         Objects.requireNonNull(ownerId, "ownerId");
-        Objects.requireNonNull(ttl, "ttl");
+        requirePositiveTtl(ttl);
 
         Instant now = Instant.now();
         Instant expiresAt = now.plus(ttl);
@@ -77,12 +77,12 @@ public class JobLockService {
     public boolean renew(String jobName, String ownerId, Duration ttl) {
         Objects.requireNonNull(jobName, "jobName");
         Objects.requireNonNull(ownerId, "ownerId");
-        Objects.requireNonNull(ttl, "ttl");
+        requirePositiveTtl(ttl);
 
         Instant now = Instant.now();
         int updated = em.createNativeQuery(
                 "UPDATE job_locks SET acquired_at = :now, expires_at = :exp "
-                + "WHERE job_name = :name AND owner_id = :owner")
+                + "WHERE job_name = :name AND owner_id = :owner AND expires_at > :now")
                 .setParameter("now", now)
                 .setParameter("exp", now.plus(ttl))
                 .setParameter("name", jobName)
@@ -90,6 +90,13 @@ public class JobLockService {
                 .executeUpdate();
 
         return updated == 1;
+    }
+
+    private static void requirePositiveTtl(Duration ttl) {
+        Objects.requireNonNull(ttl, "ttl");
+        if (ttl.isZero() || ttl.isNegative()) {
+            throw new IllegalArgumentException("ttl deve ser positivo");
+        }
     }
 
     /**
