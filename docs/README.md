@@ -62,6 +62,7 @@ Os comandos abaixo devem ser executados na raiz do repositório:
 | `npm run test:api` | Executa somente os testes da API |
 | `npm run verify` | Confere a versão do produto, testa a PWA e executa `verify` da API |
 | `npm run test:versao` | Testes do script `infra/scripts/versao.mjs` |
+| `npm run test:infra` | Teste do bootstrap idempotente dos buckets MinIO |
 | `npm run versao -- atual` | Mostra as versões da raiz, PWA e API |
 | `npm run versao -- verificar` | Falha se as três versões divergirem |
 | `npm run check:pwa` | Prova local da PWA (`versao verificar` + testes) |
