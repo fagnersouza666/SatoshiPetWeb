@@ -99,4 +99,31 @@ describe('PrivateCacheService', () => {
     await expect(service.clearPrivateCaches()).resolves.toBeUndefined();
     expect(deleteSpy).toHaveBeenCalledTimes(2);
   });
+
+  it('deve preservar sprites de duas criaturas no cache público ao limpar dados privados', async () => {
+    const sprites = new Map([
+      ['/assets/criatura-a/sprite.png', 'sprite-a'],
+      ['/assets/criatura-b/sprite.png', 'sprite-b'],
+    ]);
+    const deleteSpy = vi.fn((name: string) => {
+      if (name === 'public-assets-cache') {
+        sprites.clear();
+      }
+      return Promise.resolve(true);
+    });
+    const keysSpy = vi.fn().mockResolvedValue(['private-account-data', 'public-assets-cache']);
+
+    Object.defineProperty(globalThis, 'caches', {
+      value: { keys: keysSpy, delete: deleteSpy },
+      writable: true,
+      configurable: true,
+    });
+
+    await service.clearPrivateCaches();
+
+    expect(deleteSpy).toHaveBeenCalledWith('private-account-data');
+    expect(deleteSpy).not.toHaveBeenCalledWith('public-assets-cache');
+    expect(sprites.get('/assets/criatura-a/sprite.png')).toBe('sprite-a');
+    expect(sprites.get('/assets/criatura-b/sprite.png')).toBe('sprite-b');
+  });
 });
