@@ -59,6 +59,11 @@ O replay usa ring buffer em memória por endereço (suficiente para FUND).
 `TEST_` em testes). Quando `aggregate_type = "Address"`, o canal é o
 `aggregate_id` canônico.
 
+O identificador `outbox_events.id` é a chave lógica de aplicação. Uma
+reentrega do mesmo evento já aplicada no processo não cria outro cursor nem
+outro broadcast; se a aplicação falhar, a chave permanece disponível para
+retry. O registro acompanha a projeção em memória deste recorte FUND.
+
 ## Testes
 
 - `OutboxWebSocketIntegrationTest` — outbox → WS end-to-end.

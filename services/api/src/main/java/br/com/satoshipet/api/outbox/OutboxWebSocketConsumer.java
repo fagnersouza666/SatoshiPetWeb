@@ -5,6 +5,7 @@ import br.com.satoshipet.api.realtime.RealtimeEventCursorService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.util.Map;
@@ -27,15 +28,28 @@ public class OutboxWebSocketConsumer implements OutboxConsumer {
     private final AddressWebSocket addressWebSocket;
     private final RealtimeEventCursorService cursorService;
     private final ObjectMapper objectMapper;
+    private final OutboxEventDeduplication deduplication;
 
+    @Inject
+    public OutboxWebSocketConsumer(
+            AddressWebSocket addressWebSocket,
+            RealtimeEventCursorService cursorService,
+            ObjectMapper objectMapper,
+            OutboxEventDeduplication deduplication
+    ) {
+        this.addressWebSocket = addressWebSocket;
+        this.cursorService = cursorService;
+        this.objectMapper = objectMapper;
+        this.deduplication = deduplication;
+    }
+
+    /** Construtor mantido para testes unitários sem o container CDI. */
     public OutboxWebSocketConsumer(
             AddressWebSocket addressWebSocket,
             RealtimeEventCursorService cursorService,
             ObjectMapper objectMapper
     ) {
-        this.addressWebSocket = addressWebSocket;
-        this.cursorService = cursorService;
-        this.objectMapper = objectMapper;
+        this(addressWebSocket, cursorService, objectMapper, new OutboxEventDeduplication());
     }
 
     @Override
@@ -50,9 +64,9 @@ public class OutboxWebSocketConsumer implements OutboxConsumer {
      * Processa o evento: determina o endereço canônico, avança o cursor e
      * transmite o evento via WebSocket.
      *
-     * <p>A implementação é idempotente: o publisher pode invocar novamente em
-     * caso de falha transitória — o cursor avançará novamente mas o cliente
-     * descartará duplicatas pelo cursor.</p>
+     * <p>A implementação é idempotente pela chave {@code event.id}: o publisher
+     * pode invocar novamente em caso de falha transitória sem criar outro
+     * cursor ou broadcast para um evento já aplicado.</p>
      */
     @Override
     public void consume(OutboxEvent event) {
@@ -63,13 +77,20 @@ public class OutboxWebSocketConsumer implements OutboxConsumer {
             return;
         }
 
-        Object payload = parsePayload(event);
-        String cursor = cursorService.nextCursor(canonical, event.eventType, payload);
+        boolean applied = deduplication.executeOnce(event.id, () -> {
+            Object payload = parsePayload(event);
+            String cursor = cursorService.nextCursor(canonical, event.eventType, payload);
 
-        LOG.debugf("Transmitindo event id=%s type=%s address=%s cursor=%s",
-                event.id, event.eventType, canonical, cursor);
+            LOG.debugf("Transmitindo event id=%s type=%s address=%s cursor=%s",
+                    event.id, event.eventType, canonical, cursor);
 
-        addressWebSocket.broadcast(canonical, cursor, payload);
+            addressWebSocket.broadcast(canonical, cursor, payload);
+        });
+
+        if (!applied) {
+            LOG.debugf("Ignorando reentrega já aplicada do evento id=%s type=%s",
+                    event.id, event.eventType);
+        }
     }
 
     /**
