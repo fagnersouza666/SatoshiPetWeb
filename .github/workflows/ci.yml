@@ -26,6 +26,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Preparar relatório de falha
+        run: mkdir -p "$RUNNER_TEMP/ci-reports/verificar-pwa"
+
       - name: Configurar Node.js 22.23.2
         uses: actions/setup-node@v4
         with:
@@ -35,14 +38,28 @@ jobs:
 
       - name: Instalar dependências da PWA
         working-directory: apps/pwa
-        run: npm ci --prefer-offline
+        run: |
+          set -o pipefail
+          npm ci --prefer-offline 2>&1 | tee "$RUNNER_TEMP/ci-reports/verificar-pwa/npm-ci.log"
 
       - name: Executar check:pwa
-        run: npm run check:pwa
+        run: |
+          set -o pipefail
+          npm run check:pwa 2>&1 | tee "$RUNNER_TEMP/ci-reports/verificar-pwa/check-pwa.log"
 
       - name: Executar lint da PWA
         working-directory: apps/pwa
-        run: npm run lint
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee "$RUNNER_TEMP/ci-reports/verificar-pwa/lint.log"
+
+      - name: Publicar relatório de falha da PWA
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-falha-verificar-pwa-${{ github.run_id }}
+          path: ${{ runner.temp }}/ci-reports/verificar-pwa/
+          if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
   # Verificação da API: versao.sh verificar + mvnw verify
@@ -81,6 +98,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Preparar relatório de falha
+        run: mkdir -p "$RUNNER_TEMP/ci-reports/verificar-api"
+
       - name: Configurar Java 25 (Eclipse Temurin)
         uses: actions/setup-java@v4
         with:
@@ -94,7 +114,20 @@ jobs:
         run: chmod +x mvnw
 
       - name: Executar check:api
-        run: npm run check:api
+        run: |
+          set -o pipefail
+          npm run check:api 2>&1 | tee "$RUNNER_TEMP/ci-reports/verificar-api/check-api.log"
+
+      - name: Publicar relatório de falha da API
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-falha-verificar-api-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/ci-reports/verificar-api/
+            services/api/target/surefire-reports/
+            services/api/target/failsafe-reports/
+          if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
   # Build das imagens Docker da PWA e da API
@@ -109,6 +142,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Preparar relatório de falha
+        run: mkdir -p "$RUNNER_TEMP/ci-reports/build-imagens"
 
       - name: Extrair versão do produto
         id: versao
@@ -169,3 +205,23 @@ jobs:
           echo "|--------|-----|" >> "$GITHUB_STEP_SUMMARY"
           echo "| satoshi-pet-pwa | ${{ steps.versao.outputs.versao }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| satoshi-pet-api | ${{ steps.versao.outputs.versao }} |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Registrar contexto seguro da falha do build
+        if: ${{ failure() }}
+        run: |
+          {
+            echo "Workflow: ${GITHUB_WORKFLOW}"
+            echo "Execução: ${GITHUB_RUN_ID}"
+            echo "Evento: ${GITHUB_EVENT_NAME}"
+            echo "Ref: ${GITHUB_REF}"
+            echo "Commit: ${GITHUB_SHA}"
+            echo "O diagnóstico detalhado permanece nos logs das etapas do GitHub Actions."
+          } > "$RUNNER_TEMP/ci-reports/build-imagens/contexto.txt"
+
+      - name: Publicar relatório de falha do build
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: relatorio-falha-build-imagens-${{ github.run_id }}
+          path: ${{ runner.temp }}/ci-reports/build-imagens/
+          if-no-files-found: ignore
