@@ -1,0 +1,141 @@
+name: CI
+
+# Executa em pushes para main/develop e em pull requests para main.
+# Fluxo: verificar-pwa → verificar-api → build-imagens
+# Cada etapa usa os mesmos scripts locais que os desenvolvedores executam
+# antes de commitar (check-pwa.sh e check-api.sh).
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write   # necessário para push de imagens ao GHCR (build-imagens)
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Verificação da PWA: versao.sh verificar + testes Angular (Vitest)
+  # Espelho do ./infra/scripts/check-pwa.sh
+  # ---------------------------------------------------------------------------
+  verificar-pwa:
+    name: "Verificar PWA"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22.23.2
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.23.2"
+          cache: "npm"
+          cache-dependency-path: apps/pwa/package-lock.json
+
+      - name: Instalar dependências da PWA
+        working-directory: apps/pwa
+        run: npm ci --prefer-offline
+
+      - name: Executar check:pwa
+        run: npm run check:pwa
+
+  # ---------------------------------------------------------------------------
+  # Verificação da API: versao.sh verificar + mvnw verify
+  # Espelho do ./infra/scripts/check-api.sh
+  # Docker disponível nos runners ubuntu-latest (necessário para Testcontainers)
+  # ---------------------------------------------------------------------------
+  verificar-api:
+    name: "Verificar API"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 25 (Eclipse Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: "25"
+          distribution: "temurin"
+          cache: "maven"
+
+      - name: Permissão no Maven Wrapper
+        working-directory: services/api
+        run: chmod +x mvnw
+
+      - name: Executar check:api
+        run: npm run check:api
+
+  # ---------------------------------------------------------------------------
+  # Build das imagens Docker da PWA e da API
+  # Executa apenas após ambas as verificações passarem.
+  # As imagens são tagueadas com a versão do produto (X.Y.Z).
+  # Em PRs: build only (push: false). Em pushes para main: push para GHCR.
+  # ---------------------------------------------------------------------------
+  build-imagens:
+    name: "Build imagens Docker"
+    runs-on: ubuntu-latest
+    needs: [verificar-pwa, verificar-api]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extrair versão do produto
+        id: versao
+        run: |
+          VERSION=$(node -p "require('./apps/pwa/package.json').version")
+          echo "versao=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Versão do produto: ${VERSION}"
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login no GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # -----------------------------------------------------------------------
+      # Imagem da PWA Angular
+      # -----------------------------------------------------------------------
+      - name: "Build imagem PWA"
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/pwa/Dockerfile
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/satoshi-pet-pwa:${{ steps.versao.outputs.versao }}
+            ghcr.io/${{ github.repository_owner }}/satoshi-pet-pwa:latest
+          # Cache por camada — acelera builds em PRs e pushes subsequentes
+          cache-from: type=gha,scope=pwa
+          cache-to:   type=gha,scope=pwa,mode=max
+          provenance: false
+
+      # -----------------------------------------------------------------------
+      # Imagem da API Quarkus
+      # -----------------------------------------------------------------------
+      - name: "Build imagem API"
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/api/Dockerfile
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/satoshi-pet-api:${{ steps.versao.outputs.versao }}
+            ghcr.io/${{ github.repository_owner }}/satoshi-pet-api:latest
+          cache-from: type=gha,scope=api
+          cache-to:   type=gha,scope=api,mode=max
+          provenance: false
+
+      - name: Resumo do build
+        if: always()
+        run: |
+          echo "## Imagens Docker" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Imagem | Tag |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-----|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| satoshi-pet-pwa | ${{ steps.versao.outputs.versao }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| satoshi-pet-api | ${{ steps.versao.outputs.versao }} |" >> "$GITHUB_STEP_SUMMARY"
