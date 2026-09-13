@@ -10,14 +10,25 @@ import { Injectable } from '@angular/core';
 @Injectable({ providedIn: 'root' })
 export class PrivateCacheService {
   /**
-   * Substrings identificadoras de caches que contêm dados privados.
-   * Prefixos ngsw e buckets de API de conta.
+   * Prefixos dos caminhos de API que podem conter dados privados.
+   *
+   * O prefixo `/api/v1/conta` é mantido para instalações que ainda tenham
+   * respostas da versão anterior do contrato. O caminho vigente é
+   * `/api/v1/account`.
    */
-  private readonly PRIVATE_CACHE_KEYS = [
-    '/api/v1/conta',
-    '/api/v1/auth',
-    'ngsw:db:/api/v1/conta',
+  private readonly PRIVATE_API_PATHS = ['/api/v1/account', '/api/v1/auth', '/api/v1/conta'];
+
+  /**
+   * Marcadores de buckets criados especificamente para dados privados.
+   *
+   * O Angular Service Worker normalmente guarda os data groups em um bucket
+   * compartilhado, por isso a limpeza também inspeciona as entradas abaixo.
+   */
+  private readonly PRIVATE_CACHE_NAME_MARKERS = [
     'private',
+    'ngsw:db:/api/v1/account',
+    'ngsw:db:/api/v1/auth',
+    'ngsw:db:/api/v1/conta',
   ];
 
   /**
@@ -39,10 +50,37 @@ export class PrivateCacheService {
       return;
     }
 
-    const privateCacheNames = cacheNames.filter((name) =>
-      this.PRIVATE_CACHE_KEYS.some((key) => name.includes(key)),
-    );
+    await Promise.allSettled(cacheNames.map((name) => this.clearCache(name)));
+  }
 
-    await Promise.allSettled(privateCacheNames.map((name) => caches.delete(name)));
+  /** Limpa um bucket privado inteiro ou somente suas respostas privadas. */
+  private async clearCache(name: string): Promise<void> {
+    if (this.isPrivateCacheName(name)) {
+      await caches.delete(name);
+      return;
+    }
+
+    const cache = await caches.open(name);
+    const requests = await cache.keys();
+    const privateRequests = requests.filter((request) => this.isPrivateRequest(request));
+
+    await Promise.allSettled(privateRequests.map((request) => cache.delete(request)));
+  }
+
+  private isPrivateCacheName(name: string): boolean {
+    return this.PRIVATE_CACHE_NAME_MARKERS.some((marker) => name.includes(marker));
+  }
+
+  private isPrivateRequest(request: Request): boolean {
+    let pathname: string;
+    try {
+      pathname = new URL(request.url).pathname;
+    } catch {
+      return false;
+    }
+
+    return this.PRIVATE_API_PATHS.some(
+      (path) => pathname === path || pathname.startsWith(`${path}/`),
+    );
   }
 }

@@ -9,6 +9,10 @@ describe('PrivateCacheService', () => {
     service = TestBed.inject(PrivateCacheService);
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('deve ser criado', () => {
     expect(service).toBeTruthy();
   });
@@ -26,53 +30,68 @@ describe('PrivateCacheService', () => {
     }
   });
 
-  it('deve deletar caches com nome contendo "/api/v1/conta"', async () => {
+  it('deve deletar o bucket privado inteiro', async () => {
     const deleteSpy = vi.fn().mockResolvedValue(true);
     const keysSpy = vi
       .fn()
       .mockResolvedValue([
-        'ngsw:db:/api/v1/conta:responses',
+        'private-account-data',
+        'ngsw:db:/api/v1/account:responses',
         'ngsw:db:/api/v1/auth:responses',
         'public-assets-cache',
       ]);
-
-    Object.defineProperty(globalThis, 'caches', {
-      value: { keys: keysSpy, delete: deleteSpy },
-      writable: true,
-      configurable: true,
+    const openSpy = vi.fn().mockResolvedValue({
+      keys: vi.fn().mockResolvedValue([]),
+      delete: vi.fn(),
     });
-
-    await service.clearPrivateCaches();
-
-    expect(deleteSpy).toHaveBeenCalledWith('ngsw:db:/api/v1/conta:responses');
-    expect(deleteSpy).toHaveBeenCalledWith('ngsw:db:/api/v1/auth:responses');
-    expect(deleteSpy).not.toHaveBeenCalledWith('public-assets-cache');
-  });
-
-  it('deve deletar caches com nome contendo "private"', async () => {
-    const deleteSpy = vi.fn().mockResolvedValue(true);
-    const keysSpy = vi.fn().mockResolvedValue(['private-account-data', 'public-icons']);
-
-    Object.defineProperty(globalThis, 'caches', {
-      value: { keys: keysSpy, delete: deleteSpy },
-      writable: true,
-      configurable: true,
-    });
+    vi.stubGlobal('caches', { keys: keysSpy, delete: deleteSpy, open: openSpy });
 
     await service.clearPrivateCaches();
 
     expect(deleteSpy).toHaveBeenCalledWith('private-account-data');
-    expect(deleteSpy).not.toHaveBeenCalledWith('public-icons');
+    expect(deleteSpy).toHaveBeenCalledWith('ngsw:db:/api/v1/account:responses');
+    expect(deleteSpy).toHaveBeenCalledWith('ngsw:db:/api/v1/auth:responses');
+    expect(deleteSpy).not.toHaveBeenCalledWith('public-assets-cache');
+    expect(openSpy).toHaveBeenCalledWith('public-assets-cache');
   });
 
-  it('deve não falhar quando não há caches privados', async () => {
+  it('deve deletar entradas privadas do bucket compartilhado do ngsw', async () => {
     const deleteSpy = vi.fn().mockResolvedValue(true);
-    const keysSpy = vi.fn().mockResolvedValue(['public-assets', 'ngsw:db:public']);
+    const requests = [
+      new Request('https://satoshi.pet/api/v1/account/me'),
+      new Request('https://satoshi.pet/api/v1/account/pet/name'),
+      new Request('https://satoshi.pet/api/v1/public/addresses/bc1qexample'),
+    ];
+    const keysSpy = vi.fn().mockResolvedValue(requests);
+    const cache = { keys: keysSpy, delete: deleteSpy };
+    const openSpy = vi.fn().mockResolvedValue(cache);
+    vi.stubGlobal('caches', {
+      keys: vi.fn().mockResolvedValue(['ngsw:db:version:api-freshness']),
+      open: openSpy,
+      delete: vi.fn(),
+    });
 
-    Object.defineProperty(globalThis, 'caches', {
-      value: { keys: keysSpy, delete: deleteSpy },
-      writable: true,
-      configurable: true,
+    await service.clearPrivateCaches();
+
+    expect(openSpy).toHaveBeenCalledWith('ngsw:db:version:api-freshness');
+    expect(deleteSpy).toHaveBeenCalledTimes(2);
+    expect(deleteSpy).toHaveBeenCalledWith(requests[0]);
+    expect(deleteSpy).toHaveBeenCalledWith(requests[1]);
+    expect(deleteSpy).not.toHaveBeenCalledWith(requests[2]);
+  });
+
+  it('deve preservar entradas públicas e caminhos parecidos', async () => {
+    const deleteSpy = vi.fn().mockResolvedValue(true);
+    const publicRequest = new Request('https://satoshi.pet/api/v1/public/addresses/bc1qexample');
+    const similarPathRequest = new Request('https://satoshi.pet/api/v1/accounting/report');
+    const cache = {
+      keys: vi.fn().mockResolvedValue([publicRequest, similarPathRequest]),
+      delete: deleteSpy,
+    };
+    vi.stubGlobal('caches', {
+      keys: vi.fn().mockResolvedValue(['public-api-cache']),
+      open: vi.fn().mockResolvedValue(cache),
+      delete: vi.fn(),
     });
 
     await service.clearPrivateCaches();
@@ -86,17 +105,40 @@ describe('PrivateCacheService', () => {
       .mockRejectedValueOnce(new Error('Falha ao deletar'))
       .mockResolvedValue(true);
 
-    const keysSpy = vi
-      .fn()
-      .mockResolvedValue(['ngsw:db:/api/v1/conta:resp1', 'ngsw:db:/api/v1/conta:resp2']);
-
-    Object.defineProperty(globalThis, 'caches', {
-      value: { keys: keysSpy, delete: deleteSpy },
-      writable: true,
-      configurable: true,
+    const requests = [
+      new Request('https://satoshi.pet/api/v1/account/me'),
+      new Request('https://satoshi.pet/api/v1/account/pet/name'),
+    ];
+    const cache = {
+      keys: vi.fn().mockResolvedValue(requests),
+      delete: deleteSpy,
+    };
+    vi.stubGlobal('caches', {
+      keys: vi.fn().mockResolvedValue(['ngsw:db:version:api-freshness']),
+      open: vi.fn().mockResolvedValue(cache),
+      delete: vi.fn(),
     });
 
     await expect(service.clearPrivateCaches()).resolves.toBeUndefined();
     expect(deleteSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('deve continuar quando a leitura de um bucket falha', async () => {
+    const secondDeleteSpy = vi.fn().mockResolvedValue(true);
+    const privateRequest = new Request('https://satoshi.pet/api/v1/auth/session');
+    vi.stubGlobal('caches', {
+      keys: vi.fn().mockResolvedValue(['broken-cache', 'api-cache']),
+      open: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('Falha ao abrir'))
+        .mockResolvedValueOnce({
+          keys: vi.fn().mockResolvedValue([privateRequest]),
+          delete: secondDeleteSpy,
+        }),
+      delete: vi.fn(),
+    });
+
+    await expect(service.clearPrivateCaches()).resolves.toBeUndefined();
+    expect(secondDeleteSpy).toHaveBeenCalledWith(privateRequest);
   });
 });
