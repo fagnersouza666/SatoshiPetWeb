@@ -1,5 +1,6 @@
 package br.com.satoshipet.api.outbox;
 
+import br.com.satoshipet.api.events.DomainEventType;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -39,6 +40,26 @@ class OutboxServiceTest {
         assertNotNull(saved.createdAt);
         assertNotNull(saved.payload);
         assertEquals(0, saved.retries);
+    }
+
+    @Test
+    @Transactional
+    void persisteEventoComTipoDoCatalogo() {
+        UUID id = UUID.randomUUID();
+
+        outboxService.save(
+                id,
+                "Address",
+                "address-" + id,
+                DomainEventType.BITCOIN_BALANCE_RECONCILED,
+                "{}",
+                null
+        );
+
+        OutboxEvent saved = OutboxEvent.findById(id);
+
+        assertNotNull(saved);
+        assertEquals("BITCOIN_BALANCE_RECONCILED", saved.eventType);
     }
 
     @Test
