@@ -63,6 +63,9 @@ export const routes: Routes = [
             (m) => m.EnderecoComponent,
           ),
       },
+
+      // URLs desconhecidas retornam ao fluxo público de acesso.
+      { path: '**', redirectTo: 'entrar' },
     ],
   },
 ];
