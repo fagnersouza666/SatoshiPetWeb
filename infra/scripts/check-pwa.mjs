@@ -23,6 +23,7 @@ function executar(comando, args, cwd = raiz) {
 executar(process.execPath, [path.join(__dirname, 'versao.mjs'), 'verificar']);
 
 console.log(`==> Verificando a PWA em ${path.join(raiz, 'apps/pwa')}`);
+executar(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'test:pwa:api-cache'], raiz);
 executar(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'test:pwa'], raiz);
 executar(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'test:pwa:contract'], raiz);
 executar(process.execPath, [path.join(__dirname, 'pwa-installation-smoke.mjs')], raiz);
