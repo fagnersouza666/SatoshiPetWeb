@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
@@ -27,6 +28,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * HTTP da fila de apresentação (PET-15). Sessão {@code sp_session} + CSRF no skip.
@@ -81,6 +84,101 @@ class PetAccountResourceTest {
     }
 
     @Test
+    void snapshotSemSessaoRetorna401() {
+        given()
+                .when()
+                .get("/api/v1/account/pet")
+                .then()
+                .statusCode(401)
+                .body("code", equalTo("unauthorized"));
+    }
+
+    @Test
+    void snapshotAutenticadoRetornaBlocoCompartilhadoFilaEStats() {
+        RegisteredAccount registered = registerUniqueAccount("pet-snap");
+
+        io.restassured.path.json.JsonPath json = given()
+                .cookie("sp_session", registered.sessionToken())
+                .when()
+                .get("/api/v1/account/pet")
+                .then()
+                .statusCode(200)
+                .body("petName", equalTo("Pixel"))
+                .body("presentation", equalTo("EGG"))
+                .body("awaitingReference", equalTo(true))
+                .body("pendingMovesEgg", equalTo(false))
+                .body("operationalLabel", equalTo("Aguardando referência do plano"))
+                .body("presentationQueue.items", notNullValue())
+                .body("stats.timeInStateHours", notNullValue())
+                .extract()
+                .jsonPath();
+
+        assertNull(json.get("petState"));
+        String raw = given()
+                .cookie("sp_session", registered.sessionToken())
+                .when()
+                .get("/api/v1/account/pet")
+                .then()
+                .statusCode(200)
+                .extract()
+                .asString();
+        assertFalse(raw.contains("\"petId\""), "petId não deve aparecer no snapshot autenticado");
+        assertFalse(raw.contains("\"accountId\""), "accountId não deve aparecer no snapshot autenticado");
+        assertFalse(raw.contains("\"email\""), "email não deve aparecer no snapshot autenticado");
+    }
+
+    @Test
+    void duasContasNoMesmoEnderecoCompartilhamBlocoDoPet() {
+        RegisteredAccount first = registerUniqueAccount("share-a");
+        String address = QuarkusTransaction.requiringNew().call(() -> {
+            Account account = Account.findById(UUID.fromString(first.accountId()));
+            return AccountAddressBinding.findActivePrimary(account).orElseThrow().address.canonical;
+        });
+        RegisteredAccount second = registerAccountOnAddress("share-b", address, "OutroNome");
+
+        io.restassured.path.json.JsonPath publicJson = given()
+                .accept(ContentType.JSON)
+                .when()
+                .get("/api/v1/public/addresses/" + address)
+                .then()
+                .statusCode(200)
+                .extract()
+                .jsonPath();
+
+        io.restassured.path.json.JsonPath petA = given()
+                .cookie("sp_session", first.sessionToken())
+                .when()
+                .get("/api/v1/account/pet")
+                .then()
+                .statusCode(200)
+                .extract()
+                .jsonPath();
+
+        io.restassured.path.json.JsonPath petB = given()
+                .cookie("sp_session", second.sessionToken())
+                .when()
+                .get("/api/v1/account/pet")
+                .then()
+                .statusCode(200)
+                .extract()
+                .jsonPath();
+
+        assertEquals("Pixel", publicJson.getString("petName"));
+        for (String field : List.of(
+                "petName",
+                "presentation",
+                "petState",
+                "reserveHours",
+                "awaitingReference",
+                "pendingMovesEgg",
+                "operationalLabel")) {
+            Object expected = publicJson.get(field);
+            assertEquals(expected, petA.get(field), field + " conta A");
+            assertEquals(expected, petB.get(field), field + " conta B");
+        }
+    }
+
+    @Test
     void ca034HttpTresComemoracoesAposRegistro() {
         RegisteredAccount registered = registerUniqueAccount("ca034-http");
         feedLiveReceipts(registered.accountId(), 3);
@@ -125,10 +223,13 @@ class PetAccountResourceTest {
     }
 
     private RegisteredAccount registerUniqueAccount(String marker) {
+        return registerAccountOnAddress(marker, uniqueMainnetAddress(), "Pixel");
+    }
+
+    private RegisteredAccount registerAccountOnAddress(String marker, String address, String petName) {
         String rawToken = marker + "-token-" + System.nanoTime();
         String email = marker + "-" + System.nanoTime() + "@example.com";
         inserirToken(email, rawToken);
-        String address = uniqueMainnetAddress();
 
         ExtractableResponse<Response> response = given()
                 .contentType(ContentType.JSON)
@@ -136,9 +237,9 @@ class PetAccountResourceTest {
                         {
                             "token": "%s",
                             "bitcoinAddress": "%s",
-                            "petName": "Pixel"
+                            "petName": "%s"
                         }
-                        """.formatted(rawToken, address))
+                        """.formatted(rawToken, address, petName))
                 .when()
                 .post("/api/v1/auth/register")
                 .then()

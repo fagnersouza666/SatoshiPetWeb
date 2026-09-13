@@ -53,6 +53,7 @@ Entregar a **experiência completa do produto** no PWA Angular instalável: tela
 **Regras de negócio:** §6.4, §14.1  
 **Critérios de aceite:** CA-009  
 **Dependências:** BTC-13, DCA-16, DCA-17, CLIMA-10  
+**Notas técnicas:** A rota pública `/endereco/:address` consome `GET /api/v1/public/addresses/{address}`. O pet é textual no ovo (`presentation=EGG`, sem sprites); estado emocional só com `CREATURE`; `operationalLabel` em `role=status`.  
 
 ---
 

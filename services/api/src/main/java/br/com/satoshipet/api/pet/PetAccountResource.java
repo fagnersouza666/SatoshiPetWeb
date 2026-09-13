@@ -1,6 +1,7 @@
 package br.com.satoshipet.api.pet;
 
 import br.com.satoshipet.api.account.Account;
+import br.com.satoshipet.api.account.AccountAddressBinding;
 import br.com.satoshipet.api.platform.AuthenticatedSession;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
@@ -10,11 +11,12 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import jakarta.transaction.Transactional;
+
+import java.util.Optional;
 
 /**
- * Superfície autenticada do pet da conta (fila de apresentação e estatísticas).
- *
- * <p>Não inclui o snapshot GET {@code /api/v1/account/pet} (Task 10).</p>
+ * Superfície autenticada do pet da conta (snapshot compartilhado, fila e estatísticas).
  */
 @Path("/api/v1/account/pet")
 @Produces(MediaType.APPLICATION_JSON)
@@ -29,6 +31,33 @@ public class PetAccountResource {
 
     @Inject
     PetStatsService statsService;
+
+    /**
+     * Snapshot compartilhado do pet da conta autenticada.
+     *
+     * <p>GET /api/v1/account/pet — mesmo bloco público + fila e stats da conta.</p>
+     */
+    @GET
+    @Transactional
+    public Response snapshot() {
+        if (!authenticatedSession.isAuthenticated()) {
+            return unauthorized();
+        }
+        Account account = authenticatedSession.get().account;
+        Optional<AccountAddressBinding> binding = AccountAddressBinding.findActivePrimary(account);
+        if (binding.isEmpty()) {
+            return petNotFound();
+        }
+        PetPublicSnapshot snapshot = PetPublicSnapshot.fromAddress(binding.get().address);
+        if (snapshot.petName() == null) {
+            return petNotFound();
+        }
+        return Response.ok(AccountPetResponse.of(
+                snapshot,
+                presentationService.presentationQueue(account),
+                statsService.stats(account)
+        )).build();
+    }
 
     /**
      * Fila de comemorações ainda não apresentadas para a conta autenticada.
@@ -77,6 +106,10 @@ public class PetAccountResource {
 
     private Response unauthorized() {
         return Response.status(401).entity(new ErrorBody("unauthorized", "Autenticação necessária.")).build();
+    }
+
+    private Response petNotFound() {
+        return Response.status(404).entity(new ErrorBody("pet_not_found", "Nenhum pet vinculado à conta.")).build();
     }
 
     public record ErrorBody(String code, String message) {

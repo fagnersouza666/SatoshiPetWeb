@@ -19,7 +19,7 @@ const PET_STATE_LABELS: Record<NonNullable<PublicAddressInfo['petState']>, strin
  *
  * Consome GET /api/v1/public/addresses/{address} e exibe:
  * - Endereço Bitcoin (monospace, copiável)
- * - Nome e estado do pet
+ * - Nome, apresentação (ovo textual / criatura) e rótulo operacional
  *
  * Rota pública — não requer autenticação.
  * Acessibilidade: WCAG 2.2 AA — aria-labels no endereço, estados com rótulo textual.
@@ -57,16 +57,23 @@ const PET_STATE_LABELS: Record<NonNullable<PublicAddressInfo['petState']>, strin
           @if (info.petName) {
             <div class="pet-block">
               <span class="pet-name">{{ info.petName }}</span>
-              @if (info.petState) {
+              @if (info.presentation === 'EGG') {
+                <span class="pet-egg" aria-label="Apresentação: ovo">Ovo</span>
+              }
+              @if (info.presentation === 'CREATURE' && info.petState) {
                 <span
                   class="pet-state"
-                  [class]="'pet-state--' + info.petState.toLowerCase()"
+                  [class]="'pet-state pet-state--' + info.petState.toLowerCase()"
                   [attr.aria-label]="'Estado do pet: ' + petStateLabel(info.petState)"
                 >
                   {{ petStateLabel(info.petState) }}
                 </span>
               }
             </div>
+          }
+
+          @if (info.operationalLabel) {
+            <p class="pet-operational" role="status">{{ info.operationalLabel }}</p>
           }
         </div>
       }
@@ -183,6 +190,21 @@ const PET_STATE_LABELS: Record<NonNullable<PublicAddressInfo['petState']>, strin
         font-size: 1.125rem;
         font-weight: 700;
         color: var(--color-text);
+      }
+
+      .pet-egg {
+        font-size: 0.875rem;
+        font-weight: 500;
+        padding: var(--space-1) var(--space-3);
+        border-radius: 9999px;
+        background: color-mix(in srgb, var(--color-text-muted) 15%, transparent);
+        color: var(--color-text-muted);
+      }
+
+      .pet-operational {
+        margin: var(--space-3) 0 0;
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
       }
 
       .pet-state {

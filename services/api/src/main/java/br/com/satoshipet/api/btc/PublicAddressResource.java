@@ -1,6 +1,8 @@
 package br.com.satoshipet.api.btc;
 
 import br.com.satoshipet.api.account.Address;
+import br.com.satoshipet.api.pet.Pet;
+import br.com.satoshipet.api.pet.PetPublicSnapshot;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -48,8 +50,8 @@ public class PublicAddressResource {
     /**
      * Retorna informações públicas de um endereço Bitcoin monitorado.
      *
-     * <p>Resposta inclui saldo, histórico paginado, QR data e link para explorer.
-     * Somente campos públicos — nenhum dado privado de conta ou pet (CA-009).</p>
+     * <p>Resposta inclui saldo, histórico paginado, QR data, explorer e o
+     * bloco compartilhado do pet (CA-009: sem petId, accountId ou e-mail).</p>
      *
      * @param address endereço Bitcoin (qualquer capitalização aceita para bech32)
      * @return {@link PublicAddressResponse} com dados públicos, ou 404 se não monitorado
@@ -114,8 +116,11 @@ public class PublicAddressResource {
                 .toList();
 
         String network = validator.detectNetwork(canonical);
+        PetPublicSnapshot petSnapshot = Pet.findByAddress(managed)
+                .map(pet -> PetPublicSnapshot.from(pet, pendingSats))
+                .orElseGet(PetPublicSnapshot::empty);
 
-        return new PublicAddressResponse(
+        return PublicAddressResponse.of(
                 canonical,
                 network,
                 confirmedSats,
@@ -123,7 +128,8 @@ public class PublicAddressResource {
                 txs.size(),
                 history,
                 buildQrData(canonical),
-                buildExplorerUrl(canonical, network)
+                buildExplorerUrl(canonical, network),
+                petSnapshot
         );
     }
 

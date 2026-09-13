@@ -28,6 +28,11 @@ export interface RegisterPayload {
 export interface PublicAddressInfo {
   address: string;
   petName?: string;
+  presentation?: 'EGG' | 'CREATURE';
   petState?: 'ALIMENTADO' | 'PENSANDO' | 'CHATEADO' | 'FAMINTO' | 'CRITICO' | 'HIBERNANDO';
+  reserveHours?: string;
+  awaitingReference?: boolean;
+  pendingMovesEgg?: boolean;
+  operationalLabel?: string | null;
   createdAt?: string;
 }

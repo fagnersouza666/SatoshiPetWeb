@@ -7,7 +7,49 @@ Auth: cookie `sp_session` + `AuthenticatedSession`, no mesmo formato 401 de
 `AccountResource` (`code=unauthorized`). `POST` de skip exige `X-CSRF-Token`.
 Visitante anônimo **não** persiste cursor nesta API (401).
 
-O snapshot `GET /api/v1/account/pet` **não** faz parte deste recorte.
+## Snapshot — `GET /api/v1/account/pet`
+
+Bloco compartilhado (`PetPublicSnapshot`, CA-009) mais fila e stats da conta.
+Sem `petId` / `accountId` / `email`. Duas contas no mesmo endereço veem o
+mesmo bloco (nome, apresentação, estado, reserva, rótulos). `petState` só na
+criatura; no ovo o campo é omitido. `reserveHours` é string
+`BigDecimal.toPlainString()` (CC-10).
+
+`operationalLabel`, nesta ordem:
+
+1. `awaitingReference` → `Aguardando referência do plano`
+2. ovo + sats pendentes de entrada → `Recebimento pendente`
+3. ovo + `bornAt` preenchido + artwork ≠ `APPROVED` → `Preparando nascimento`
+4. senão omitido
+
+```json
+{
+  "petName": "Pixel",
+  "presentation": "EGG",
+  "reserveHours": "0.0000000000",
+  "awaitingReference": true,
+  "pendingMovesEgg": false,
+  "operationalLabel": "Aguardando referência do plano",
+  "presentationQueue": { "items": [] },
+  "stats": {
+    "bornAt": null,
+    "ageHours": null,
+    "timeInStateHours": {
+      "ALIMENTADO": "0.0000000000",
+      "PENSANDO": "0.0000000000",
+      "CHATEADO": "0.0000000000",
+      "FAMINTO": "0.0000000000",
+      "CRITICO": "0.0000000000",
+      "HIBERNANDO": "0.0000000000"
+    },
+    "reconstructedPeriod": false,
+    "observedPeriod": false
+  }
+}
+```
+
+O mesmo bloco (sem fila/stats) aparece em `GET /api/v1/public/addresses/{address}`.
+Sem pet no endereço, os campos do pet são omitidos na resposta pública.
 
 ## Fila — `GET /api/v1/account/pet/presentation-queue`
 

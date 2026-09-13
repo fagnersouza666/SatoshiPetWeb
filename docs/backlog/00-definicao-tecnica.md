@@ -3,7 +3,7 @@
 **Versão:** 1.1  
 **Data:** 12/09/2026  
 **Referência:** PRD v2.0, seções 16–18 e 23  
-**Histórico:** 1.1 — decisão de execução 100% containerizada (§1.3, §2.4, §6, §11)
+**Histórico:** 1.1 — decisão de execução 100% containerizada (§1.3, §2.4, §6, §11); 13/09/2026 — motor persistente (V5, PetEngine, PET_* outbox, tick) e projeção pública do pet (§4, §7)
 
 ---
 
@@ -244,6 +244,8 @@ Entidades principais e invariantes:
 | `PresentationCursor` | Por conta; visitante usa cursor local CC-15 |
 | `Outbox` / `Job` | Idempotência e travas por domínio |
 
+**Motor persistente (este recorte):** migration `V5__create_pet_engine.sql`, `PetEngine` (`PetLifecyclePort`), eventos `PET_*` na outbox transacional e `PetTickJob` (relógio do servidor, lock `pet-tick`). O bloco compartilhado do pet (CA-009, sem `petId`/`accountId`/e-mail) é projetado em `GET /api/v1/public/addresses/{address}` e `GET /api/v1/account/pet` via `PetPublicSnapshot`.
+
 ---
 
 ## 5. Catálogo de eventos (PRD §16.3)
@@ -348,7 +350,8 @@ Wrapper de `services/api`.
 
 - Prefixo: `/api/v1`
 - Autenticação: sessão via cookie HttpOnly + CSRF para mutações
-- Respostas públicas: DTOs explícitos (nunca serializar entidade privada integral — PRD §17.1)
+- Respostas públicas: DTOs explícitos (nunca serializar entidade privada integral — PRD §17.1). O pet na página pública usa `PetPublicSnapshot` (nome, apresentação, estado emocional só na criatura, reserva em string decimal, rótulos operacionais).
+- Autenticado: `GET /api/v1/account/pet` devolve o mesmo bloco compartilhado + `presentationQueue` e `stats` da conta.
 - Rate limiting por IP e por conta
 
 ### 7.2 WebSocket
@@ -359,8 +362,8 @@ Wrapper de `services/api`.
 
 ### 7.3 Endpoints públicos (sem auth)
 
-- `GET /public/addresses/{address}` — projeção CC-07/08/09
-- Sem dados privados no payload (CA-009)
+- `GET /public/addresses/{address}` — projeção CC-07/08/09 + bloco compartilhado do pet (`PetPublicSnapshot`)
+- Sem dados privados no payload (CA-009: sem petId, accountId, e-mail)
 
 ---
 

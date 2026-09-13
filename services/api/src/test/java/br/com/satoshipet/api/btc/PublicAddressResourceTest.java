@@ -3,6 +3,7 @@ package br.com.satoshipet.api.btc;
 import br.com.satoshipet.api.account.Account;
 import br.com.satoshipet.api.account.AccountAddressBinding;
 import br.com.satoshipet.api.account.Address;
+import br.com.satoshipet.api.pet.ArtworkStatus;
 import br.com.satoshipet.api.pet.Pet;
 import br.com.satoshipet.api.pet.PetFeeding;
 import br.com.satoshipet.api.pet.PetReferencePortion;
@@ -26,6 +27,8 @@ import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.startsWith;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * Testes de integração para {@link PublicAddressResource}.
@@ -215,5 +218,86 @@ class PublicAddressResourceTest {
                 .then()
                 .statusCode(200)
                 .body("network", equalTo("regtest"));
+    }
+
+    @Test
+    void ovoOmitePetStateERotulaAguardandoReferencia() {
+        persistirPetNoFixture("Pixel", pet -> { });
+
+        io.restassured.path.json.JsonPath json = given()
+                .accept(ContentType.JSON)
+                .when().get("/api/v1/public/addresses/" + FIXTURE_ADDR)
+                .then()
+                .statusCode(200)
+                .body("petName", equalTo("Pixel"))
+                .body("presentation", equalTo("EGG"))
+                .body("awaitingReference", equalTo(true))
+                .body("pendingMovesEgg", equalTo(false))
+                .body("reserveHours", equalTo("0.0000000000"))
+                .body("operationalLabel", equalTo("Aguardando referência do plano"))
+                .extract().jsonPath();
+
+        assertNull(json.get("petState"));
+        String raw = given()
+                .accept(ContentType.JSON)
+                .when().get("/api/v1/public/addresses/" + FIXTURE_ADDR)
+                .then()
+                .statusCode(200)
+                .extract().asString();
+        assertFalse(raw.contains("\"petId\""), "petId não deve aparecer na resposta pública");
+        assertFalse(raw.contains("\"accountId\""), "accountId não deve aparecer na resposta pública");
+        assertFalse(raw.contains("\"email\""), "email não deve aparecer na resposta pública");
+    }
+
+    @Test
+    void ovoComEntradaPendenteRotulaRecebimentoPendente() {
+        persistirPetNoFixture("Pixel", pet -> pet.awaitingReference = false);
+        QuarkusTransaction.requiringNew().run(() -> {
+            Address address = Address.findByCanonical(FIXTURE_ADDR).orElseThrow();
+            LogicalReceipt.createPending(address, "ab".repeat(32), 1_000L, Instant.now()).persist();
+        });
+
+        given()
+                .accept(ContentType.JSON)
+                .when().get("/api/v1/public/addresses/" + FIXTURE_ADDR)
+                .then()
+                .statusCode(200)
+                .body("presentation", equalTo("EGG"))
+                .body("pendingMovesEgg", equalTo(true))
+                .body("operationalLabel", equalTo("Recebimento pendente"));
+    }
+
+    @Test
+    void ovoPreparandoNascimentoQuandoJaNasceuSemArteAprovada() {
+        persistirPetNoFixture("Pixel", pet -> {
+            pet.awaitingReference = false;
+            pet.bornAt = Instant.parse("2026-09-12T12:00:00Z");
+            pet.artworkStatus = ArtworkStatus.PENDING;
+        });
+
+        given()
+                .accept(ContentType.JSON)
+                .when().get("/api/v1/public/addresses/" + FIXTURE_ADDR)
+                .then()
+                .statusCode(200)
+                .body("presentation", equalTo("EGG"))
+                .body("pendingMovesEgg", equalTo(false))
+                .body("operationalLabel", equalTo("Preparando nascimento"));
+    }
+
+    private void persistirPetNoFixture(String nome, java.util.function.Consumer<Pet> customize) {
+        QuarkusTransaction.requiringNew().run(() -> {
+            Address address = Address.findByCanonical(FIXTURE_ADDR).orElseThrow();
+            Account account = Account.create(
+                    "public-pet-" + System.nanoTime() + "@example.com",
+                    "America/Sao_Paulo",
+                    "pt-BR",
+                    Instant.now());
+            account.persist();
+            AccountAddressBinding.create(account, address, true, Instant.now()).persist();
+            Pet pet = Pet.create(address, account, nome, Instant.now());
+            customize.accept(pet);
+            pet.persist();
+        });
     }
 }

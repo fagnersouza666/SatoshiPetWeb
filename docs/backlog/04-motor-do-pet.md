@@ -170,7 +170,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §9.5, **CC-15**  
 **Critérios de aceite:** CA-034, CA-035  
 **Dependências:** FUND-05, PWA  
-**Notas técnicas:** Visitante usa cursor local; sincronizar entre dispositivos da mesma conta. Persistência em `presentation_cursors` (`V5__create_pet_engine.sql`), um cursor por conta. API autenticada: `PetPresentationService` + `PetAccountResource` (`GET /api/v1/account/pet/presentation-queue`, `POST /api/v1/account/pet/presentation/skip` com CSRF). Fonte: outbox `Pet` com `PET_FEEDING_APPLIED|REVISED` só se `PetFeeding` LIVE `presentable=true`, mais `PET_BORN|PET_REAPPEARED`; `createdAt >= boundAt` da conta. Skip avança `lastPresentedEventId` até o último elegível e **não** chama `creditDelta`. Contrato: [`docs/contratos/pet-apresentacao-e-stats.md`](../contratos/pet-apresentacao-e-stats.md). Snapshot GET `/api/v1/account/pet` fica na Task 10.
+**Notas técnicas:** Visitante usa cursor local; sincronizar entre dispositivos da mesma conta. Persistência em `presentation_cursors` (`V5__create_pet_engine.sql`), um cursor por conta. API autenticada: `PetPresentationService` + `PetAccountResource` (`GET /api/v1/account/pet` snapshot compartilhado + fila/stats, `GET /api/v1/account/pet/presentation-queue`, `POST /api/v1/account/pet/presentation/skip` com CSRF). Fonte: outbox `Pet` com `PET_FEEDING_APPLIED|REVISED` só se `PetFeeding` LIVE `presentable=true`, mais `PET_BORN|PET_REAPPEARED`; `createdAt >= boundAt` da conta. Skip avança `lastPresentedEventId` até o último elegível e **não** chama `creditDelta`. Contrato: [`docs/contratos/pet-apresentacao-e-stats.md`](../contratos/pet-apresentacao-e-stats.md).
 
 ---
 
@@ -213,8 +213,9 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 
 ## Definition of Done (épico)
 
-- [ ] CA-011 a CA-027, CA-034, CA-035 verificáveis
-- [ ] Duas contas veem mesmo estado emocional e reserva
-- [ ] Porção referência CC-05 consistente entre contas
-- [ ] Invalidação RBF/reorg reconstrói reserva corretamente
-- [ ] Ovo/carência CC-12 conforme saldo confirmado
+- [x] Motor persistente verificável na API: reserva/estados (CA-015..CA-019, CA-026, CA-027), ovo/pendente/carência (CA-011, CA-012, CA-020..CA-023, CA-025), fila/skip (CA-034, CA-035)
+- [x] Duas contas no mesmo endereço recebem o mesmo bloco compartilhado (`petName`, `presentation`, `petState`, `reserveHours`, `awaitingReference`, `pendingMovesEgg`, `operationalLabel`) em `GET /api/v1/public/addresses/{address}` e `GET /api/v1/account/pet`
+- [x] Porção referência CC-05 consistente entre contas
+- [x] Invalidação RBF/reorg reconstrói reserva corretamente
+- [x] Ovo/carência CC-12 conforme saldo confirmado
+- [ ] CA-013/CA-024 (arte aprovada no nascimento/reaparecimento) permanecem no épico ART
