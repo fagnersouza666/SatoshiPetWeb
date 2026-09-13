@@ -3,6 +3,8 @@ package br.com.satoshipet.api.pet;
 import br.com.satoshipet.api.account.Account;
 import br.com.satoshipet.api.account.AccountAddressBinding;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
 import java.time.Instant;
@@ -16,6 +18,13 @@ import java.util.UUID;
  */
 @ApplicationScoped
 public class PersistentPetReferencePortionPort implements PetReferencePortionPort {
+
+    private final Instance<PetLifecyclePort> lifecycle;
+
+    @Inject
+    public PersistentPetReferencePortionPort(Instance<PetLifecyclePort> lifecycle) {
+        this.lifecycle = lifecycle;
+    }
 
     @Override
     @Transactional
@@ -53,11 +62,15 @@ public class PersistentPetReferencePortionPort implements PetReferencePortionPor
         Account source = loadSourceAccount(sourceAccountId);
         PetReferencePortion.create(pet, source, portionSats, validFrom, origin, validFrom).persist();
         refreshFoodSource(pet);
+        boolean wasAwaitingReference = pet.awaitingReference;
         if (sameAccount(source, pet.foodSourceAccount)) {
             pet.lastPositivePortionSats = portionSats;
             pet.lastPositivePortionOrigin = origin;
             pet.awaitingReference = false;
             pet.updatedAt = validFrom;
+        }
+        if (wasAwaitingReference && !pet.awaitingReference) {
+            lifecycle.get().reconstruct(petId, validFrom);
         }
     }
 

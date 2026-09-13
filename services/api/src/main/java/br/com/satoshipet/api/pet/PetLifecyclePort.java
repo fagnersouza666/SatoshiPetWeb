@@ -61,7 +61,8 @@ public interface PetLifecyclePort {
     void tick(UUID petId, Instant now);
 
     /**
-     * Reconstrução histórica. Task 7 — no-op neste recorte.
+     * Reconstrução histórica: replay de recebimentos confirmados com cap 168h
+     * (PET-08, PET-10, CA-014, CA-027). Sem porção positiva, permanece no-op.
      */
     void reconstruct(UUID petId, Instant now);
 }

@@ -7,8 +7,9 @@ import java.util.UUID;
 /**
  * Resolve e registra a porção de referência única do pet (CC-05, CC-11).
  *
- * <p>Não reconstrói alimentações históricas. Sem snapshot e sem última porção
- * positiva, devolve {@link Optional#empty()} (aguardando referência).</p>
+ * <p>Sem snapshot e sem última porção positiva, devolve {@link Optional#empty()}
+ * (aguardando referência). A primeira virada {@code awaitingReference}
+ * true→false dispara {@link PetLifecyclePort#reconstruct}.</p>
  */
 public interface PetReferencePortionPort {
 
@@ -20,7 +21,8 @@ public interface PetReferencePortionPort {
      * Persiste snapshot imutável. Atualiza lastPositivePortionSats / origin
      * e awaitingReference=false somente se a conta fonte for a fonte alimentar
      * ativa após refresh (CC-05). portionSats deve ser &gt; 0.
-     * Não reconstrói alimentações históricas.
+     * A primeira virada awaitingReference true→false dispara a reconstrução
+     * histórica; snapshots secundários não reconstruem.
      *
      * @param sourceAccountId conta da snapshot; pode ser nulo
      */

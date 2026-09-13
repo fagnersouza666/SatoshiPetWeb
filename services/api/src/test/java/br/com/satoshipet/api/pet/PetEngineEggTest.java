@@ -314,6 +314,8 @@ class PetEngineEggTest {
         if (withPortion) {
             portionPort.recordPositivePortion(
                     pet.id, account.id, PORTION_SATS, PortionOrigin.CREATOR_PLAN, NOW);
+            // reconstruct com saldo 0 inicia carência; o fixture simula plano sem snapshot on-chain.
+            pet.zeroBalanceSince = null;
         }
         return new Fixture(pet, account, address);
     }

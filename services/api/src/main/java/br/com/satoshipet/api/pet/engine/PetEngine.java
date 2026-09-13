@@ -1,5 +1,8 @@
 package br.com.satoshipet.api.pet.engine;
 
+import br.com.satoshipet.api.account.Address;
+import br.com.satoshipet.api.btc.BitcoinTransaction;
+import br.com.satoshipet.api.btc.LogicalReceipt;
 import br.com.satoshipet.api.pet.ArtworkStatus;
 import br.com.satoshipet.api.pet.FeedingOrigin;
 import br.com.satoshipet.api.pet.FeedingStatus;
@@ -16,9 +19,14 @@ import org.jboss.logging.Logger;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Motor persistente de alimentação e reserva do pet (CA-015, CA-017, CC-11, CC-14).
@@ -115,17 +123,7 @@ public class PetEngine implements PetLifecyclePort {
     @Transactional
     public void onBalanceKnown(UUID petId, long confirmedSats, long pendingIncomingSats, Instant when) {
         Objects.requireNonNull(when, "when");
-        Pet pet = loadPet(petId);
-        evaluate(pet, when);
-        // pendingIncomingSats não nasce, não reaparece e não limpa a carência (CA-012 / CC-12)
-        pet.zeroBalanceSince = EggPolicy.nextZeroBalanceSince(pet.zeroBalanceSince, confirmedSats, when);
-        if (EggPolicy.canAppear(confirmedSats)) {
-            appear(pet, when);
-        } else if (pet.presentation == PetPresentation.CREATURE
-                && pet.bornAt != null
-                && EggPolicy.graceElapsed(pet.zeroBalanceSince, when)) {
-            returnToEgg(pet, when);
-        }
+        applyKnownBalance(loadPet(petId), confirmedSats, when);
     }
 
     @Override
@@ -151,9 +149,123 @@ public class PetEngine implements PetLifecyclePort {
     @Override
     @Transactional
     public void reconstruct(UUID petId, Instant now) {
-        loadPet(petId);
-        LOG.infof("reconstruct no-op petId=%s when=%s", petId, now);
+        Objects.requireNonNull(now, "now");
+        Pet pet = loadPet(petId);
+        Optional<ResolvedPortion> portion = portionPort.currentPositivePortion(petId);
+        if (portion.isEmpty()) {
+            return;
+        }
+        long portionSats = portion.get().portionSats();
+        List<ReplayEvent> events = orderConfirmedReceipts(pet);
+        pet.reserveHours = ZERO_HOURS;
+        pet.reserveDepletedAt = null;
+        pet.lastEvaluatedAt = events.isEmpty() ? pet.createdAt : events.getFirst().effectiveAt();
+        for (ReplayEvent event : events) {
+            replay(pet, event, portionSats);
+        }
+        long[] totals = sumAddressSats(pet.address);
+        applyKnownBalance(pet, totals[0], now);
     }
+
+    private static void replay(Pet pet, ReplayEvent event, long portionSats) {
+        LogicalReceipt receipt = event.receipt();
+        Instant effectiveAt = event.effectiveAt();
+        evaluate(pet, effectiveAt);
+        Optional<PetFeeding> existing = PetFeeding.findByPetAndReceipt(pet, receipt.id);
+        if (existing.isEmpty()) {
+            BigDecimal duration = ReserveMath.hoursAdded(receipt.confirmedSats, portionSats);
+            creditDelta(pet, duration, effectiveAt);
+            PetFeeding.create(
+                    pet,
+                    receipt.id,
+                    receipt.confirmedSats,
+                    portionSats,
+                    duration,
+                    effectiveAt,
+                    FeedingStatus.VALID,
+                    FeedingOrigin.HISTORICAL_RECONSTRUCTION,
+                    false,
+                    effectiveAt
+            ).persist();
+            return;
+        }
+        PetFeeding feeding = existing.get();
+        if (feeding.status == FeedingStatus.INVALIDATED) {
+            return;
+        }
+        if (feeding.status != FeedingStatus.VALID) {
+            return;
+        }
+        creditDelta(pet, feeding.durationHours, effectiveAt);
+        if (effectiveAt.isBefore(pet.createdAt) || feeding.origin == FeedingOrigin.HISTORICAL_RECONSTRUCTION) {
+            feeding.presentable = false;
+        }
+        feeding.updatedAt = effectiveAt;
+    }
+
+    private static List<ReplayEvent> orderConfirmedReceipts(Pet pet) {
+        Map<String, BitcoinTransaction> byTxid = BitcoinTransaction.list("address", pet.address)
+                .stream()
+                .collect(Collectors.toMap(
+                        tx -> tx.txid,
+                        Function.identity(),
+                        (first, ignored) -> first));
+        return LogicalReceipt.findByAddress(pet.address).stream()
+                .filter(receipt -> receipt.confirmedSats > 0L)
+                .map(receipt -> {
+                    BitcoinTransaction tx = byTxid.get(receipt.referenceTxid);
+                    return new ReplayEvent(receipt, tx, effectiveAt(tx, pet.createdAt));
+                })
+                .sorted(REPLAY_ORDER)
+                .toList();
+    }
+
+    private static Instant effectiveAt(BitcoinTransaction tx, Instant petCreatedAt) {
+        if (tx == null) {
+            return petCreatedAt;
+        }
+        if (tx.confirmedAt != null) {
+            return tx.confirmedAt;
+        }
+        if (tx.observedAt != null) {
+            return tx.observedAt;
+        }
+        return petCreatedAt;
+    }
+
+    private static long[] sumAddressSats(Address address) {
+        long confirmed = 0L;
+        long pending = 0L;
+        for (LogicalReceipt receipt : LogicalReceipt.findByAddress(address)) {
+            confirmed += receipt.confirmedSats;
+            pending += receipt.pendingSats;
+        }
+        return new long[] {confirmed, pending};
+    }
+
+    /**
+     * pendingIncomingSats não nasce, não reaparece e não limpa a carência (CA-012 / CC-12).
+     */
+    private static void applyKnownBalance(Pet pet, long confirmedSats, Instant when) {
+        evaluate(pet, when);
+        pet.zeroBalanceSince = EggPolicy.nextZeroBalanceSince(pet.zeroBalanceSince, confirmedSats, when);
+        if (EggPolicy.canAppear(confirmedSats)) {
+            appear(pet, when);
+        } else if (pet.presentation == PetPresentation.CREATURE
+                && pet.bornAt != null
+                && EggPolicy.graceElapsed(pet.zeroBalanceSince, when)) {
+            returnToEgg(pet, when);
+        }
+    }
+
+    private record ReplayEvent(LogicalReceipt receipt, BitcoinTransaction tx, Instant effectiveAt) {
+    }
+
+    private static final Comparator<ReplayEvent> REPLAY_ORDER = Comparator
+            .comparing((ReplayEvent event) -> event.tx() == null ? null : event.tx().blockHeight,
+                    Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(ReplayEvent::effectiveAt)
+            .thenComparing(event -> event.receipt().referenceTxid);
 
     private void handleExistingObservation(
             Pet pet,

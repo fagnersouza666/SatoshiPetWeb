@@ -96,6 +96,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §7.4  
 **Critérios de aceite:** CA-014, CA-045 (histórico)  
 **Dependências:** PET-07, BTC-07  
+**Notas técnicas:** Replay confirma recebimentos em ordem de cadeia; txs anteriores ao acompanhamento não entram na fila apresentável (`presentable=false`). Saldo confirmado histórico faz o pet nascer (CA-014).  
 
 ---
 
@@ -106,7 +107,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** **CC-11**  
 **Critérios de aceite:** CA-026, CA-027  
 **Dependências:** PET-02, DCA  
-**Notas técnicas:** `PetReferencePortionPort.currentPositivePortion` devolve vazio enquanto não houver snapshot da fonte nem `lastPositivePortionSats` > 0; não inventa 10.000 sats nem plano DCA. `PetEngine` em recebimento sem porção não cria `PetFeeding` nem altera reserva (CA-026 lite); reconstrução histórica é Task 7.
+**Notas técnicas:** `PetEngine.reconstruct` faz replay de `LogicalReceipt` confirmados (altura de bloco, depois instante, depois txid), cap 168h por evento, alimentações novas com origem `HISTORICAL_RECONSTRUCTION` e `presentable=false`. LIVE observada após o cadastro permanece apresentável. A primeira virada `awaitingReference` true→false em `PersistentPetReferencePortionPort` dispara o replay via `Instance<PetLifecyclePort>` (evita ciclo CDI). Sem porção positiva o método retorna sem creditar (CA-026).
 
 ---
 
@@ -117,6 +118,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §7.4  
 **Critérios de aceite:** CA-027  
 **Dependências:** PET-09  
+**Notas técnicas:** A porção viva permanece `CREATOR_PLAN` (ou fallback) em `lastPositivePortionOrigin`; o recorte pré-plano é marcado em `PetFeeding.origin = HISTORICAL_RECONSTRUCTION`. Não inventa sugestão DCA histórica.  
 
 ---
 
