@@ -100,9 +100,9 @@ public class RegistrationService {
         Account account = Account.create(email, tz, "pt-BR", now);
         account.persist();
 
-        Address address = Address.findByCanonical(canonical)
+        Address address = Address.findByNetworkAndCanonical("mainnet", canonical)
                 .orElseGet(() -> {
-                    Address a = Address.create(canonical, now);
+                    Address a = Address.create(canonical, "mainnet", now);
                     a.persist();
                     return a;
                 });

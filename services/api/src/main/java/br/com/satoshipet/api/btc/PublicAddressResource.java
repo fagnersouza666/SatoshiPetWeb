@@ -73,22 +73,24 @@ public class PublicAddressResource {
                     .build();
         }
 
+        String network = validator.detectNetwork(canonical);
+
         // Busca o endereço monitorado
-        Address managed = Address.findByCanonical(canonical)
+        Address managed = Address.findByNetworkAndCanonical(network, canonical)
                 .orElseThrow(() -> new NotFoundException(
                         "Endereço não monitorado: " + canonical
                 ));
 
         LOG.debugf("Consulta pública de endereço=%s", canonical);
 
-        return Response.ok(buildResponse(managed, canonical)).build();
+        return Response.ok(buildResponse(managed, canonical, network)).build();
     }
 
     // -------------------------------------------------------------------------
     // Construção da resposta (somente campos públicos — CA-009)
     // -------------------------------------------------------------------------
 
-    private PublicAddressResponse buildResponse(Address managed, String canonical) {
+    private PublicAddressResponse buildResponse(Address managed, String canonical, String network) {
         // Busca transações do banco de dados (dados locais, sem chamada externa)
         List<BitcoinTransaction> txs = BitcoinTransaction.list(
                 "address = ?1 ORDER BY observedAt DESC",
@@ -112,8 +114,6 @@ public class PublicAddressResource {
                         tx.blockHeight
                 ))
                 .toList();
-
-        String network = validator.detectNetwork(canonical);
 
         return new PublicAddressResponse(
                 canonical,

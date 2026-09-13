@@ -34,10 +34,13 @@ ALTER TABLE addresses ADD CONSTRAINT chk_addresses_network
 ALTER TABLE account_address_bindings ADD CONSTRAINT chk_account_address_bindings_interval
     CHECK (unbound_at IS NULL OR unbound_at >= bound_at);
 
--- Índice por expressão em vez de índice parcial: a mesma definição funciona
--- em PostgreSQL e no H2 usado para validar o banco vazio.
-CREATE UNIQUE INDEX uq_account_address_bindings_active_account
-    ON account_address_bindings (
-        account_id,
-        (CASE WHEN unbound_at IS NULL THEN 'ACTIVE' ELSE CAST(id AS VARCHAR(36)) END)
-    );
+-- O marcador primário representa o vínculo ativo: históricos ficam nulos,
+-- permitindo vários registros encerrados na constraint UNIQUE.
+ALTER TABLE account_address_bindings ALTER COLUMN is_primary DROP NOT NULL;
+UPDATE account_address_bindings
+SET is_primary = CASE WHEN unbound_at IS NULL THEN TRUE ELSE NULL END;
+ALTER TABLE account_address_bindings ADD CONSTRAINT chk_account_address_bindings_state
+    CHECK ((unbound_at IS NULL AND is_primary = TRUE)
+           OR (unbound_at IS NOT NULL AND is_primary IS NULL));
+ALTER TABLE account_address_bindings ADD CONSTRAINT uq_account_address_bindings_active_account
+    UNIQUE (account_id, is_primary);

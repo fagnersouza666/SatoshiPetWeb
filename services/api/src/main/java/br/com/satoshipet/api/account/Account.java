@@ -45,10 +45,7 @@ public class Account extends PanacheEntityBase {
     @Column(name = "locale", nullable = false, length = 10)
     public String locale;
 
-    /**
-     * Prazo até o qual a troca de endereço ainda é permitida.
-     * Nulo antes de qualquer vínculo; imutável após as 72h da primeira vinculação (CA-004).
-     */
+    /** Prazo absoluto até o qual a troca de endereço ainda é permitida (CA-004). */
     @Column(name = "address_change_deadline", updatable = false)
     public Instant addressChangeDeadline;
 

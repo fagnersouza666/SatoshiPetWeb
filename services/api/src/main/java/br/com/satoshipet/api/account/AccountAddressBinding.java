@@ -51,8 +51,8 @@ public class AccountAddressBinding extends PanacheEntityBase {
     public Instant unboundAt;
 
     /** Indica se este é o endereço principal da conta. */
-    @Column(name = "is_primary", nullable = false)
-    public boolean primary;
+    @Column(name = "is_primary")
+    public Boolean primary;
 
     protected AccountAddressBinding() {
         // Construtor exigido pelo Hibernate ORM.
@@ -65,6 +65,9 @@ public class AccountAddressBinding extends PanacheEntityBase {
         Objects.requireNonNull(account, "account");
         Objects.requireNonNull(address, "address");
         Objects.requireNonNull(now, "now");
+        if (!primary) {
+            throw new IllegalArgumentException("O vínculo ativo deve ser primário");
+        }
 
         AccountAddressBinding binding = new AccountAddressBinding();
         binding.id = UUID.randomUUID();
@@ -106,6 +109,10 @@ public class AccountAddressBinding extends PanacheEntityBase {
     /** Reativa um vínculo desfeito como primário (CC-03 — troca de volta ao endereço anterior). */
     public void rebindAsPrimary(Instant now) {
         Objects.requireNonNull(now, "now");
+        if (now.isBefore(this.boundAt)
+                || (this.unboundAt != null && now.isBefore(this.unboundAt))) {
+            throw new IllegalArgumentException("rebindAt deve ocorrer após o intervalo anterior");
+        }
         this.unboundAt = null;
         this.primary = true;
     }
@@ -118,7 +125,7 @@ public class AccountAddressBinding extends PanacheEntityBase {
         }
         if (this.unboundAt == null) {
             this.unboundAt = now;
-            this.primary = false;
+            this.primary = null;
         }
     }
 }
