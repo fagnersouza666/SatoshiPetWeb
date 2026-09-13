@@ -6,7 +6,7 @@
 
     <groupId>br.com.satoshipet</groupId>
     <artifactId>satoshi-pet-api</artifactId>
-    <version>1.4.0-SNAPSHOT</version>
+    <version>1.5.0-SNAPSHOT</version>
     <packaging>quarkus</packaging>
 
     <properties>

@@ -12,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Instant;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -20,7 +21,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -68,6 +71,36 @@ class OutboxWebSocketConsumerTest {
         consumer.consume(event);
 
         verify(addressWebSocket).broadcast(eq("bc1qtest1234"), anyString(), any());
+    }
+
+    @Test
+    void reentregaDoMesmoEventoNaoCriaNovoCursorNemBroadcast() {
+        OutboxEvent event = criarEvento("Address", "bc1qdedup", "BITCOIN_TRANSACTION_OBSERVED",
+                "{\"txid\":\"abc\"}");
+        doNothing().when(addressWebSocket).broadcast(anyString(), anyString(), any());
+
+        consumer.consume(event);
+        String cursorAplicado = cursorService.currentCursor("bc1qdedup");
+        consumer.consume(event);
+
+        assertEquals(cursorAplicado, cursorService.currentCursor("bc1qdedup"));
+        verify(addressWebSocket, times(1)).broadcast(eq("bc1qdedup"), anyString(), any());
+    }
+
+    @Test
+    void falhaNaAplicacaoDeixaEventoDisponivelParaRetry() {
+        OutboxEvent event = criarEvento("Address", "bc1qretry", "BITCOIN_TRANSACTION_OBSERVED",
+                "{\"txid\":\"retry\"}");
+        doThrow(new IllegalStateException("falha transitória"))
+                .doNothing()
+                .when(addressWebSocket)
+                .broadcast(anyString(), anyString(), any());
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> consumer.consume(event));
+        consumer.consume(event);
+
+        verify(addressWebSocket, times(2)).broadcast(eq("bc1qretry"), anyString(), any());
     }
 
     @Test
