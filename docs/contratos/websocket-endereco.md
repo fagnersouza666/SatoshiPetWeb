@@ -64,6 +64,12 @@ reentrega do mesmo evento já aplicada no processo não cria outro cursor nem
 outro broadcast; se a aplicação falhar, a chave permanece disponível para
 retry. O registro acompanha a projeção em memória deste recorte FUND.
 
+O `OutboxPublisher` usa uma trava persistida por agregado, formada por
+`aggregate_type` e `aggregate_id`. Assim, duas réplicas não processam
+concorrentemente eventos do mesmo agregado, enquanto eventos de agregados
+distintos não compartilham a mesma trava. A trava só é liberada depois da
+transação que atualiza `processed_at` terminar.
+
 ## Testes
 
 - `OutboxWebSocketIntegrationTest` — outbox → WS end-to-end.
