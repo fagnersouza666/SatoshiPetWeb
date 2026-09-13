@@ -1,5 +1,15 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  ViewChild,
+  inject,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 import { OfflineService } from '../offline/offline.service';
 
 /**
@@ -12,7 +22,7 @@ import { OfflineService } from '../offline/offline.service';
  * - Navegação inferior persistente
  *
  * Acessibilidade: WCAG 2.2 AA — landmarks semânticos, aria-labels,
- * foco visível e região de status para leitores de tela.
+ * skip link, foco visível e região de status para leitores de tela.
  */
 @Component({
   selector: 'app-shell',
@@ -22,6 +32,32 @@ import { OfflineService } from '../offline/offline.service';
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ShellComponent {
+export class ShellComponent implements AfterViewInit {
   protected readonly offlineService = inject(OfflineService);
+  private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
+
+  @ViewChild('mainContent', { static: true }) private mainContent?: ElementRef<HTMLElement>;
+
+  ngAfterViewInit(): void {
+    this.router.events
+      .pipe(
+        filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe(() => {
+        // Aguarda a renderização da rota para que o foco não seja perdido pela
+        // substituição do conteúdo do router-outlet.
+        queueMicrotask(() => this.focarConteudoPrincipal());
+      });
+  }
+
+  protected pularParaConteudo(event: Event): void {
+    event.preventDefault();
+    this.focarConteudoPrincipal();
+  }
+
+  private focarConteudoPrincipal(): void {
+    this.mainContent?.nativeElement.focus();
+  }
 }

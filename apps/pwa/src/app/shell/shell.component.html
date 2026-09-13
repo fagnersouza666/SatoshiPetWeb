@@ -1,4 +1,8 @@
 <div class="shell">
+  <a class="skip-link" href="#main-content" (click)="pularParaConteudo($event)">
+    Pular para o conteúdo principal
+  </a>
+
   <!-- Banner offline — exibido quando navigator.onLine = false (CA-031) -->
   @if (offlineService.isOffline()) {
     <div class="offline-banner" role="alert" aria-live="assertive" aria-atomic="true">
@@ -51,7 +55,7 @@
   </header>
 
   <!-- Conteúdo principal -->
-  <main class="main" id="main-content" tabindex="-1">
+  <main #mainContent class="main" id="main-content" tabindex="-1">
     <router-outlet />
   </main>
 
@@ -61,6 +65,7 @@
       routerLink="/conta"
       routerLinkActive="bottom-nav__item--active"
       class="bottom-nav__item"
+      ariaCurrentWhenActive="page"
       aria-label="Minha conta"
     >
       <!-- ícone: pessoa -->
@@ -85,6 +90,7 @@
       routerLinkActive="bottom-nav__item--active"
       class="bottom-nav__item"
       [routerLinkActiveOptions]="{ exact: false }"
+      ariaCurrentWhenActive="page"
       aria-label="Endereço Bitcoin"
     >
       <!-- ícone: carteira/endereço -->
@@ -107,4 +113,4 @@
 </div>
 
 <!-- Região de status para leitores de tela -->
-<div aria-live="polite" aria-atomic="true" class="sr-only" id="status-region"></div>
+<div role="status" aria-live="polite" aria-atomic="true" class="sr-only" id="status-region"></div>

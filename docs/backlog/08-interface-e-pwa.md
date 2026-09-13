@@ -250,6 +250,11 @@ Entregar a **experiência completa do produto** no PWA Angular instalável: tela
 
 **Descrição:** Contraste, teclado, foco, live regions para estado pet, `prefers-reduced-motion`, descrições textuais.
 
+**Base do shell:** o layout fornece landmarks de cabeçalho, conteúdo principal e navegação,
+link de salto para teclado, foco no conteúdo após troca de rota e estado ativo anunciado
+por `aria-current`. A política global de `prefers-reduced-motion: reduce` desliga
+animações e transições sem remover os estados textuais.
+
 **Regras de negócio:** §14.7  
 **Critérios de aceite:** CA-069  
 **Dependências:** PWA-05, PWA-06  
