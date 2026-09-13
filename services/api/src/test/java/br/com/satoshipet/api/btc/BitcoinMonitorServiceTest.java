@@ -403,7 +403,10 @@ class BitcoinMonitorServiceTest {
         assertEquals(1, PetFeeding.listByPet(pet).size(),
                 "Segundo poll não duplica alimentação (CA-017)");
         Pet stored = Pet.findById(pet.id);
-        assertEquals(0, stored.reserveHours.compareTo(TWENTY_FOUR_HOURS));
+        assertTrue(stored.reserveHours.compareTo(TWENTY_FOUR_HOURS) <= 0,
+                "segundo poll não pode somar outra porção");
+        assertTrue(stored.reserveHours.compareTo(new BigDecimal("23").setScale(10)) > 0,
+                "onBalanceKnown só consome o relógio entre polls");
     }
 
     @Test

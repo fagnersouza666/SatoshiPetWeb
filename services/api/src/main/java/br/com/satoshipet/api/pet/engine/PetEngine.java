@@ -1,5 +1,6 @@
 package br.com.satoshipet.api.pet.engine;
 
+import br.com.satoshipet.api.pet.ArtworkStatus;
 import br.com.satoshipet.api.pet.FeedingOrigin;
 import br.com.satoshipet.api.pet.FeedingStatus;
 import br.com.satoshipet.api.pet.Pet;
@@ -113,9 +114,18 @@ public class PetEngine implements PetLifecyclePort {
     @Override
     @Transactional
     public void onBalanceKnown(UUID petId, long confirmedSats, long pendingIncomingSats, Instant when) {
-        loadPet(petId);
-        LOG.infof("onBalanceKnown no-op petId=%s confirmedSats=%d pendingIncomingSats=%d when=%s",
-                petId, confirmedSats, pendingIncomingSats, when);
+        Objects.requireNonNull(when, "when");
+        Pet pet = loadPet(petId);
+        evaluate(pet, when);
+        // pendingIncomingSats não nasce, não reaparece e não limpa a carência (CA-012 / CC-12)
+        pet.zeroBalanceSince = EggPolicy.nextZeroBalanceSince(pet.zeroBalanceSince, confirmedSats, when);
+        if (EggPolicy.canAppear(confirmedSats)) {
+            appear(pet, when);
+        } else if (pet.presentation == PetPresentation.CREATURE
+                && pet.bornAt != null
+                && EggPolicy.graceElapsed(pet.zeroBalanceSince, when)) {
+            returnToEgg(pet, when);
+        }
     }
 
     @Override
@@ -129,7 +139,13 @@ public class PetEngine implements PetLifecyclePort {
     @Transactional
     public void tick(UUID petId, Instant now) {
         Objects.requireNonNull(now, "now");
-        evaluate(loadPet(petId), now);
+        Pet pet = loadPet(petId);
+        evaluate(pet, now);
+        if (pet.presentation == PetPresentation.CREATURE
+                && pet.bornAt != null
+                && EggPolicy.graceElapsed(pet.zeroBalanceSince, now)) {
+            returnToEgg(pet, now);
+        }
     }
 
     @Override
@@ -157,6 +173,9 @@ public class PetEngine implements PetLifecyclePort {
         if (confirmed && feeding.status == FeedingStatus.PROVISIONAL) {
             confirmExisting(pet, feeding, portion, amountSats, when);
             return;
+        }
+        if (!confirmed && feeding.status == FeedingStatus.VALID) {
+            demoteValidOnReorg(pet, feeding, when);
         }
     }
 
@@ -243,6 +262,69 @@ public class PetEngine implements PetLifecyclePort {
         creditDelta(pet, creditedHours(pet, feeding).negate(), when);
         feeding.status = FeedingStatus.INVALIDATED;
         feeding.updatedAt = when;
+        if (EggPolicy.immediateEggOnLostBirthFoundation(
+                pet.bornAt != null,
+                hasOtherValidFeeding(pet, logicalReceiptId),
+                0L)) {
+            returnToEgg(pet, when);
+        }
+    }
+
+    private void demoteValidOnReorg(Pet pet, PetFeeding feeding, Instant when) {
+        evaluate(pet, when);
+        if (pet.presentation == PetPresentation.EGG) {
+            creditDelta(pet, feeding.durationHours.negate(), when);
+            feeding.durationHours = ZERO_HOURS;
+            feeding.status = FeedingStatus.PROVISIONAL;
+            feeding.presentable = false;
+        } else {
+            feeding.status = FeedingStatus.PROVISIONAL;
+        }
+        feeding.updatedAt = when;
+        if (EggPolicy.immediateEggOnLostBirthFoundation(
+                pet.bornAt != null,
+                hasOtherValidFeeding(pet, feeding.logicalReceiptId),
+                0L)) {
+            returnToEgg(pet, when);
+        }
+    }
+
+    private static void appear(Pet pet, Instant when) {
+        if (pet.bornAt == null) {
+            pet.bornAt = when;
+            if (pet.artworkStatus == ArtworkStatus.NONE) {
+                pet.artworkStatus = ArtworkStatus.PENDING;
+            }
+            if (pet.artworkStatus == ArtworkStatus.APPROVED) {
+                pet.presentation = PetPresentation.CREATURE;
+            }
+            pet.updatedAt = when;
+            return;
+        }
+        if (pet.presentation == PetPresentation.EGG) {
+            pet.lastReappearedAt = when;
+            if (pet.artworkStatus == ArtworkStatus.APPROVED) {
+                pet.presentation = PetPresentation.CREATURE;
+            }
+            pet.updatedAt = when;
+            return;
+        }
+        pet.updatedAt = when;
+    }
+
+    private static void returnToEgg(Pet pet, Instant when) {
+        pet.presentation = PetPresentation.EGG;
+        pet.lastReturnedToEggAt = when;
+        pet.updatedAt = when;
+    }
+
+    private static boolean hasOtherValidFeeding(Pet pet, UUID logicalReceiptId) {
+        return PetFeeding.count(
+                "pet = ?1 AND status = ?2 AND logicalReceiptId <> ?3",
+                pet,
+                FeedingStatus.VALID,
+                logicalReceiptId
+        ) > 0;
     }
 
     private static void evaluate(Pet pet, Instant now) {
