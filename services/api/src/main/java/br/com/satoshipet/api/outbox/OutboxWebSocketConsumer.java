@@ -10,8 +10,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.jboss.logging.Logger;
 
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Consumidor do outbox transacional que transmite eventos de endereço
@@ -78,8 +78,14 @@ public class OutboxWebSocketConsumer implements OutboxConsumer {
         LOG.debugf("Transmitindo event id=%s type=%s address=%s cursor=%s",
                 event.id, event.eventType, canonical, cursor);
 
+        List<AccountAddressBinding> accountBindings = lookupPetAccountBindings(event.eventType, canonical);
         addressWebSocket.broadcast(canonical, cursor, payload);
-        fanOutPetEventToAccounts(event.eventType, canonical, cursor, payload);
+        for (AccountAddressBinding binding : accountBindings) {
+            if (binding.account == null || binding.account.id == null) {
+                continue;
+            }
+            accountWebSocket.send(binding.account.id.toString(), cursor, payload);
+        }
     }
 
     /**
@@ -119,28 +125,16 @@ public class OutboxWebSocketConsumer implements OutboxConsumer {
     }
 
     /**
-     * Espelha eventos {@code PET_*} para as contas com vínculo ativo no endereço.
-     * Sem endereço resolvido, o fan-out é ignorado.
+     * Resolve vínculos ativos para fan-out de {@code PET_*}. Lookup antes do
+     * broadcast: falha de persistência propaga e a outbox retenta.
+     * Endereço ausente → lista vazia (canal de endereço ainda transmite).
      */
-    private void fanOutPetEventToAccounts(String eventType, String canonical, String cursor, Object payload) {
+    private static List<AccountAddressBinding> lookupPetAccountBindings(String eventType, String canonical) {
         if (eventType == null || !eventType.startsWith("PET_")) {
-            return;
+            return List.of();
         }
-        Optional<Address> address;
-        try {
-            address = Address.findByCanonical(canonical);
-        } catch (IllegalStateException e) {
-            LOG.debugf("Fan-out de contas ignorado (endereço não resolvido) address=%s", canonical);
-            return;
-        }
-        if (address.isEmpty()) {
-            return;
-        }
-        for (AccountAddressBinding binding : AccountAddressBinding.findActiveByAddress(address.get())) {
-            if (binding.account == null || binding.account.id == null) {
-                continue;
-            }
-            accountWebSocket.send(binding.account.id.toString(), cursor, payload);
-        }
+        return Address.findByCanonical(canonical)
+                .map(AccountAddressBinding::findActiveByAddress)
+                .orElseGet(List::of);
     }
 }

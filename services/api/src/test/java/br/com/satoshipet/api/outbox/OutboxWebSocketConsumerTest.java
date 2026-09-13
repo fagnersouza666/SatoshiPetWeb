@@ -13,9 +13,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Instant;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -78,11 +80,10 @@ class OutboxWebSocketConsumerTest {
                 UUID.randomUUID().toString(),
                 "PET_STATE_CHANGED",
                 "{\"address\":\"bc1qfromPetPayload\",\"eventType\":\"PET_STATE_CHANGED\"}");
-        doNothing().when(addressWebSocket).broadcast(anyString(), anyString(), any());
 
-        consumer.consume(event);
-
-        verify(addressWebSocket).broadcast(eq("bc1qfromPetPayload"), anyString(), any());
+        assertEquals("bc1qfromPetPayload", consumer.resolveCanonical(event));
+        assertThrows(IllegalStateException.class, () -> consumer.consume(event));
+        verify(addressWebSocket, never()).broadcast(anyString(), anyString(), any());
         verify(accountWebSocket, never()).send(anyString(), anyString(), any());
     }
 
