@@ -103,4 +103,28 @@ public class PetReferencePortion extends PanacheEntityBase {
                 source
         ).firstResultOptional();
     }
+
+    /**
+     * Snapshot mais recente que bate com a última porção positiva persistida no pet.
+     */
+    public static Optional<PetReferencePortion> latestMatchingLastPositive(
+            Pet pet, long portionSats, PortionOrigin origin
+    ) {
+        Objects.requireNonNull(pet, "pet");
+        if (origin == null) {
+            return find(
+                    "pet = ?1 AND portionSats = ?2 "
+                            + "ORDER BY validFrom DESC, createdAt DESC, id DESC",
+                    pet,
+                    portionSats
+            ).firstResultOptional();
+        }
+        return find(
+                "pet = ?1 AND portionSats = ?2 AND origin = ?3 "
+                        + "ORDER BY validFrom DESC, createdAt DESC, id DESC",
+                pet,
+                portionSats,
+                origin
+        ).firstResultOptional();
+    }
 }

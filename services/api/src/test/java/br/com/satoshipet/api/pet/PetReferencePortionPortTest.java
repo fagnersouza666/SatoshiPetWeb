@@ -104,7 +104,41 @@ class PetReferencePortionPortTest {
         assertEquals(CREATOR_PORTION, current.get().portionSats());
         assertEquals(PortionOrigin.CREATOR_PLAN, current.get().origin());
         assertEquals(fixture.account.id, current.get().sourceAccountId());
-        assertEquals(fixture.account.id, ((Pet) Pet.findById(fixture.pet.id)).foodSourceAccount.id);
+        Pet pet = Pet.findById(fixture.pet.id);
+        assertEquals(fixture.account.id, pet.foodSourceAccount.id);
+        assertEquals(CREATOR_PORTION, pet.lastPositivePortionSats);
+        assertEquals(PortionOrigin.CREATOR_PLAN, pet.lastPositivePortionOrigin);
+        assertFalse(pet.awaitingReference);
+    }
+
+    @Test
+    @Transactional
+    void somenteSnapshotSecundarioNaoAlteraReferenciaEnquantoCriadorVinculado() {
+        Fixture fixture = persistPetWithBinding("sec-only");
+        Account secondary = persistAccount("sec-only-acc");
+        AccountAddressBinding.create(
+                secondary, fixture.address, false, NOW.plusSeconds(60)).persist();
+
+        port.recordPositivePortion(
+                fixture.pet.id,
+                secondary.id,
+                SECONDARY_PORTION,
+                PortionOrigin.FALLBACK_OLDEST_BINDING,
+                NOW
+        );
+
+        Optional<PetReferencePortionPort.ResolvedPortion> current =
+                port.currentPositivePortion(fixture.pet.id);
+        assertTrue(current.isEmpty());
+        Pet pet = Pet.findById(fixture.pet.id);
+        assertTrue(pet.awaitingReference);
+        assertNull(pet.lastPositivePortionSats);
+        assertNull(pet.lastPositivePortionOrigin);
+        assertEquals(fixture.account.id, pet.foodSourceAccount.id);
+        List<PetReferencePortion> snapshots = PetReferencePortion.list("pet", pet);
+        assertEquals(1, snapshots.size());
+        assertEquals(SECONDARY_PORTION, snapshots.get(0).portionSats);
+        assertEquals(secondary.id, snapshots.get(0).sourceAccount.id);
     }
 
     @Test
@@ -163,6 +197,7 @@ class PetReferencePortionPortTest {
         assertTrue(current.isPresent());
         assertEquals(CREATOR_PORTION, current.get().portionSats());
         assertEquals(PortionOrigin.CREATOR_PLAN, current.get().origin());
+        assertEquals(fixture.account.id, current.get().sourceAccountId());
         Pet pet = Pet.findById(fixture.pet.id);
         assertEquals(remaining.id, pet.foodSourceAccount.id);
         assertEquals(CREATOR_PORTION, pet.lastPositivePortionSats);
@@ -186,6 +221,7 @@ class PetReferencePortionPortTest {
         assertTrue(current.isPresent());
         assertEquals(CREATOR_PORTION, current.get().portionSats());
         assertEquals(PortionOrigin.CREATOR_PLAN, current.get().origin());
+        assertEquals(fixture.account.id, current.get().sourceAccountId());
         Pet pet = Pet.findById(fixture.pet.id);
         assertNull(pet.foodSourceAccount);
         assertEquals(CREATOR_PORTION, pet.lastPositivePortionSats);

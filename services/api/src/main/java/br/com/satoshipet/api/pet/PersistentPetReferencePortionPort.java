@@ -21,24 +21,18 @@ public class PersistentPetReferencePortionPort implements PetReferencePortionPor
     @Transactional
     public Optional<ResolvedPortion> currentPositivePortion(UUID petId) {
         Pet pet = loadPet(petId);
+        Account previousFood = pet.foodSourceAccount;
         refreshFoodSource(pet);
-        if (pet.foodSourceAccount != null) {
+        Account food = pet.foodSourceAccount;
+        if (food != null) {
             Optional<PetReferencePortion> scoped =
-                    PetReferencePortion.latestForPetAndSource(pet, pet.foodSourceAccount);
+                    PetReferencePortion.latestForPetAndSource(pet, food);
             if (scoped.isPresent()) {
-                PetReferencePortion snapshot = scoped.get();
-                UUID sourceId = snapshot.sourceAccount == null ? null : snapshot.sourceAccount.id;
-                return Optional.of(new ResolvedPortion(snapshot.portionSats, snapshot.origin, sourceId));
+                return Optional.of(toResolved(scoped.get()));
             }
+            return fallbackLastPositive(pet, food.id, previousFood);
         }
-        if (pet.lastPositivePortionSats != null && pet.lastPositivePortionSats > 0L) {
-            PortionOrigin origin = pet.lastPositivePortionOrigin != null
-                    ? pet.lastPositivePortionOrigin
-                    : PortionOrigin.CREATOR_PLAN;
-            UUID sourceId = pet.foodSourceAccount == null ? null : pet.foodSourceAccount.id;
-            return Optional.of(new ResolvedPortion(pet.lastPositivePortionSats, origin, sourceId));
-        }
-        return Optional.empty();
+        return fallbackLastPositive(pet, null, previousFood);
     }
 
     @Override
@@ -58,10 +52,13 @@ public class PersistentPetReferencePortionPort implements PetReferencePortionPor
         Pet pet = loadPet(petId);
         Account source = loadSourceAccount(sourceAccountId);
         PetReferencePortion.create(pet, source, portionSats, validFrom, origin, validFrom).persist();
-        pet.lastPositivePortionSats = portionSats;
-        pet.lastPositivePortionOrigin = origin;
-        pet.awaitingReference = false;
-        pet.updatedAt = validFrom;
+        refreshFoodSource(pet);
+        if (sameAccount(source, pet.foodSourceAccount)) {
+            pet.lastPositivePortionSats = portionSats;
+            pet.lastPositivePortionOrigin = origin;
+            pet.awaitingReference = false;
+            pet.updatedAt = validFrom;
+        }
     }
 
     @Override
@@ -79,6 +76,44 @@ public class PersistentPetReferencePortionPort implements PetReferencePortionPor
         pet.foodSourceAccount = AccountAddressBinding.findOldestActiveByAddress(pet.address)
                 .map(binding -> binding.account)
                 .orElse(null);
+    }
+
+    private Optional<ResolvedPortion> fallbackLastPositive(
+            Pet pet, UUID currentFoodId, Account previousFood
+    ) {
+        if (pet.lastPositivePortionSats == null || pet.lastPositivePortionSats <= 0L) {
+            return Optional.empty();
+        }
+        UUID ownerId = lastPositiveSourceAccountId(pet);
+        if (ownerId == null && previousFood != null && !sameAccount(previousFood, pet.foodSourceAccount)) {
+            ownerId = previousFood.id;
+        }
+        if (currentFoodId != null && (ownerId == null || ownerId.equals(currentFoodId))) {
+            return Optional.empty();
+        }
+        PortionOrigin origin = pet.lastPositivePortionOrigin != null
+                ? pet.lastPositivePortionOrigin
+                : PortionOrigin.CREATOR_PLAN;
+        return Optional.of(new ResolvedPortion(pet.lastPositivePortionSats, origin, ownerId));
+    }
+
+    private static UUID lastPositiveSourceAccountId(Pet pet) {
+        return PetReferencePortion.latestMatchingLastPositive(
+                        pet, pet.lastPositivePortionSats, pet.lastPositivePortionOrigin)
+                .map(snapshot -> snapshot.sourceAccount == null ? null : snapshot.sourceAccount.id)
+                .orElse(null);
+    }
+
+    private static ResolvedPortion toResolved(PetReferencePortion snapshot) {
+        UUID sourceId = snapshot.sourceAccount == null ? null : snapshot.sourceAccount.id;
+        return new ResolvedPortion(snapshot.portionSats, snapshot.origin, sourceId);
+    }
+
+    private static boolean sameAccount(Account left, Account right) {
+        if (left == null || right == null) {
+            return left == right;
+        }
+        return left.id.equals(right.id);
     }
 
     private static Pet loadPet(UUID petId) {

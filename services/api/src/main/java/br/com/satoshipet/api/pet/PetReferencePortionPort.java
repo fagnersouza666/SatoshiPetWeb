@@ -17,8 +17,9 @@ public interface PetReferencePortionPort {
     Optional<ResolvedPortion> currentPositivePortion(UUID petId);
 
     /**
-     * Persiste snapshot imutável e atualiza lastPositivePortionSats / origin.
-     * Define awaitingReference=false. portionSats deve ser &gt; 0.
+     * Persiste snapshot imutável. Atualiza lastPositivePortionSats / origin
+     * e awaitingReference=false somente se a conta fonte for a fonte alimentar
+     * ativa após refresh (CC-05). portionSats deve ser &gt; 0.
      * Não reconstrói alimentações históricas.
      *
      * @param sourceAccountId conta da snapshot; pode ser nulo
