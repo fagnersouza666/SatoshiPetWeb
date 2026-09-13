@@ -193,9 +193,12 @@ npm run versao -- corrigir       # 0.1.0 → 0.1.1 (correção de bug)
 O pipeline em `.github/workflows/ci.yml` executa automaticamente em push para
 `main`/`develop` e em pull requests:
 
-1. **verificar-pwa** — `check-pwa.sh` + lint Prettier (Node 22.23.2)
-2. **verificar-api** — `check-api.sh` (Java 25 + Docker + PostgreSQL 18.6)
-3. **build-imagens** — `docker build` para PWA e API, tagueado com `X.Y.Z`
+1. **validar-ci** — teste do contrato que mantém o bloqueio dos gates
+2. **verificar-pwa** — `check-pwa.sh` + lint Prettier (Node 22.23.2)
+3. **verificar-api** — `check-api.sh` (Java 25 + Docker + PostgreSQL 18.6)
+4. **build-imagens** — `docker build` para PWA e API, tagueado com `X.Y.Z`
+5. **gate-obrigatorio** — único check agregado que libera a integração apenas
+   quando todos os quatro jobs terminam com `success`
 
 Em pushes para `main`, as imagens são publicadas no GitHub Container Registry
 (`ghcr.io`).
@@ -207,6 +210,14 @@ contém somente contexto seguro da execução, enquanto o diagnóstico detalhado
 permanece nos logs do Actions. Os artefatos só são publicados após falha e não
 incluem variáveis de ambiente, credenciais ou outros segredos. A falha do job
 permanece bloqueante.
+
+O status `CI / Gate obrigatório` deve ser configurado como check obrigatório na
+proteção ou ruleset de `main`, junto da exigência de revisão de pull request.
+Essa configuração é administrativa do GitHub e não pode ser aplicada pelo
+arquivo YAML. O gate agregado permanece pendente enquanto qualquer dependência
+estiver pendente e falha explicitamente quando uma dependência falhar, for
+cancelada ou for ignorada; a Refinery só deve integrar após esse status verde e
+a revisão obrigatória concluída.
 
 ---
 
