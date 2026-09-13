@@ -64,12 +64,26 @@ describe('AuthService', () => {
     expect(apiSpy.post).toHaveBeenCalledWith('/v1/auth/register', payload);
   });
 
-  it('logout deve limpar cache, sessão e navegar para /entrar', async () => {
-    apiSpy.post.mockReturnValue(of(undefined));
-    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+  it('logout deve invalidar servidor, limpar cache, sessão e navegar nessa ordem', async () => {
+    const events: string[] = [];
+    apiSpy.post.mockImplementation(() => {
+      events.push('servidor');
+      return of(undefined);
+    });
+    cacheSpy.clearPrivateCaches.mockImplementation(async () => {
+      events.push('cache');
+    });
+    sessionSpy.clearSession.mockImplementation(() => {
+      events.push('sessão');
+    });
+    const navigateSpy = vi.spyOn(router, 'navigate').mockImplementation(async () => {
+      events.push('navegação');
+      return true;
+    });
 
     await service.logout();
 
+    expect(events).toEqual(['servidor', 'cache', 'sessão', 'navegação']);
     expect(cacheSpy.clearPrivateCaches).toHaveBeenCalled();
     expect(sessionSpy.clearSession).toHaveBeenCalled();
     expect(navigateSpy).toHaveBeenCalledWith(['/entrar']);
