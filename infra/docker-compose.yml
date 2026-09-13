@@ -68,11 +68,13 @@ services:
       QUARKUS_DATASOURCE_JDBC_URL: "jdbc:postgresql://postgres:5432/${POSTGRES_DB:-satoshi_pet}"
       QUARKUS_DATASOURCE_USERNAME: "${POSTGRES_USER:-satoshi_pet}"
       QUARKUS_DATASOURCE_PASSWORD: "${POSTGRES_PASSWORD:-satoshi_pet_dev}"
-      # Object storage (MinIO em dev, S3 em produção via override)
-      QUARKUS_S3_ENDPOINT_OVERRIDE: "http://minio:9000"
-      QUARKUS_S3_AWS_REGION: "us-east-1"
-      AWS_ACCESS_KEY_ID: "${MINIO_ROOT_USER:-minioadmin}"
-      AWS_SECRET_ACCESS_KEY: "${MINIO_ROOT_PASSWORD:-minioadmin_dev}"
+      # Object storage (adaptador S3-compatível; MinIO em dev)
+      # Dentro da rede Compose, a API acessa o serviço pelo nome "minio".
+      MINIO_ENDPOINT: "http://minio:9000"
+      MINIO_ACCESS_KEY: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD:-minioadmin_dev}"
+      MINIO_BUCKET: "${MINIO_BUCKET:-pet-artwork}"
+      MINIO_STAGING_BUCKET: "${MINIO_STAGING_BUCKET:-pet-artwork-staging}"
       # Mailer (aponta para Mailpit em dev; sobrescreva para produção)
       QUARKUS_MAILER_HOST: "${MAIL_HOST:-mailpit}"
       QUARKUS_MAILER_PORT: "${MAIL_PORT:-1025}"

@@ -20,6 +20,7 @@
 | [contratos/bitcoin-indexer-port.md](./contratos/bitcoin-indexer-port.md) | Porta de indexador on-chain (Esplora/stub) |
 | [contratos/eventos-bitcoin.md](./contratos/eventos-bitcoin.md) | Catálogo versionado de eventos e transições do monitor Bitcoin |
 | [contratos/eventos-bitcoin-redaction.md](./contratos/eventos-bitcoin-redaction.md) | Allowlist e redaction da projeção pública dos eventos Bitcoin |
+| [contratos/object-storage.md](./contratos/object-storage.md) | Endpoints, buckets e variáveis do MinIO local |
 
 ## Operação
 
