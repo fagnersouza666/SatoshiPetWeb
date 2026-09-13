@@ -12,7 +12,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
-import java.util.Map;
 
 /**
  * Canal WebSocket para notificações de uma conta autenticada.
@@ -42,15 +41,15 @@ public class AccountWebSocket {
         String accountId = connection.pathParam("accountId");
         LOG.debugf("Nova conexão no canal account:%s id=%s", accountId, connection.id());
 
-        Map<String, Object> snapshot = Map.of("accountId", accountId);
-        return serializeOrNull(WebSocketMessage.snapshot("0", snapshot));
+        AccountSnapshot snapshot = new AccountSnapshot(accountId);
+        return serializeOrNull(new WebSocketSnapshot<>(WebSocketCursor.initial(), snapshot));
     }
 
     /** Processa PONG do heartbeat. */
     @OnTextMessage
     public String onMessage(WebSocketConnection connection, String rawMessage) {
         try {
-            WebSocketMessage msg = objectMapper.readValue(rawMessage, WebSocketMessage.class);
+            WebSocketClientMessage msg = objectMapper.readValue(rawMessage, WebSocketClientMessage.class);
             if ("PONG".equals(msg.type())) {
                 LOG.debugf("PONG recebido de account=%s", connection.pathParam("accountId"));
             }
@@ -75,7 +74,7 @@ public class AccountWebSocket {
      * @param data      dados a transmitir
      */
     public void send(String accountId, String cursor, Object data) {
-        String message = serializeOrNull(WebSocketMessage.event(cursor, data));
+        String message = serializeOrNull(WebSocketEvent.from(cursor, data, objectMapper));
         if (message == null) return;
 
         openConnections.stream()
