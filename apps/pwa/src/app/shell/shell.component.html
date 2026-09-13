@@ -54,62 +54,61 @@
     </div>
   </header>
 
-  <!-- Conteúdo principal -->
-  <main #mainContent class="main" id="main-content" tabindex="-1">
-    <router-outlet />
-  </main>
+  <div class="shell__body">
+    <!-- Conteúdo principal -->
+    <main #mainContent class="main" id="main-content" tabindex="-1">
+      <router-outlet />
+    </main>
 
-  <!-- Navegação inferior (mobile-first) -->
-  <nav class="bottom-nav" role="navigation" aria-label="Navegação principal">
-    <a
-      routerLink="/conta"
-      routerLinkActive="bottom-nav__item--active"
-      class="bottom-nav__item"
-      ariaCurrentWhenActive="page"
-      aria-label="Minha conta"
-    >
-      <!-- ícone: pessoa -->
-      <svg
-        class="bottom-nav__icon"
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        aria-hidden="true"
+    <!-- Navegação inferior em telas pequenas e lateral no desktop -->
+    <nav class="bottom-nav" role="navigation" aria-label="Navegação principal">
+      <a
+        routerLink="/conta"
+        routerLinkActive="bottom-nav__item--active"
+        ariaCurrentWhenActive="page"
+        class="bottom-nav__item"
+        aria-label="Minha conta"
       >
-        <path
-          fill="currentColor"
-          d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"
-        />
-      </svg>
-      <span class="bottom-nav__label">Conta</span>
-    </a>
+        <!-- ícone: pessoa -->
+        <svg
+          class="bottom-nav__icon"
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path
+            fill="currentColor"
+            d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"
+          />
+        </svg>
+        <span class="bottom-nav__label">Conta</span>
+      </a>
 
-    <a
-      routerLink="/endereco"
-      routerLinkActive="bottom-nav__item--active"
-      class="bottom-nav__item"
-      [routerLinkActiveOptions]="{ exact: false }"
-      ariaCurrentWhenActive="page"
-      aria-label="Endereço Bitcoin"
-    >
-      <!-- ícone: carteira/endereço -->
-      <svg
-        class="bottom-nav__icon"
-        xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        aria-hidden="true"
+      <a
+        routerLink="/"
+        routerLinkActive="bottom-nav__item--active"
+        class="bottom-nav__item"
+        [routerLinkActiveOptions]="{ exact: true }"
+        ariaCurrentWhenActive="page"
+        aria-label="Página inicial"
       >
-        <path
-          fill="currentColor"
-          d="M21 18v1c0 1.1-.9 2-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14c1.1 0 2 .9 2 2v1h-9a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h9zm-9-2h10V8H12v8zm4-2.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"
-        />
-      </svg>
-      <span class="bottom-nav__label">Endereço</span>
-    </a>
-  </nav>
+        <!-- ícone: casa -->
+        <svg
+          class="bottom-nav__icon"
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <path fill="currentColor" d="M12 3 2 12h3v8h6v-6h2v6h6v-8h3L12 3Z" />
+        </svg>
+        <span class="bottom-nav__label">Início</span>
+      </a>
+    </nav>
+  </div>
 </div>
 
 <!-- Região de status para leitores de tela -->

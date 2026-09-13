@@ -1,9 +1,15 @@
 // ─── Shell layout ─────────────────────────────────────────────────────────────
 
+:host {
+  display: block;
+  min-height: 100dvh;
+}
+
 .shell {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
+  min-width: 20rem;
   background: var(--color-bg);
 }
 
@@ -37,7 +43,8 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem max(1rem, env(safe-area-inset-left, 0px)) 0.5rem
+    max(1rem, env(safe-area-inset-right, 0px));
   background: #7c3aed;
   color: #fff;
   font-size: 0.875rem;
@@ -62,11 +69,11 @@
   &__inner {
     display: flex;
     align-items: center;
-    padding: 0.75rem 1rem;
-    max-width: 48rem;
-    margin: 0 auto;
     width: 100%;
-    box-sizing: border-box;
+    max-width: 80rem;
+    margin: 0 auto;
+    padding: 0.75rem max(1rem, env(safe-area-inset-left, 0px)) 0.75rem
+      max(1rem, env(safe-area-inset-right, 0px));
   }
 
   &__logo {
@@ -96,15 +103,30 @@
   }
 }
 
+// ─── Área de trabalho ────────────────────────────────────────────────────────
+
+.shell__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
 // ─── Conteúdo principal ───────────────────────────────────────────────────────
 
 .main {
   flex: 1;
-  padding: 1rem;
-  max-width: 48rem;
-  margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
+  max-width: 80rem;
+  margin: 0 auto;
+  padding: 1rem max(1rem, env(safe-area-inset-left, 0px)) 1rem
+    max(1rem, env(safe-area-inset-right, 0px));
+
+  // Remove outline padrão do tabindex programático
+  &:focus {
+    outline: none;
+  }
 }
 
 // ─── Navegação inferior ───────────────────────────────────────────────────────
@@ -115,7 +137,8 @@
   align-items: stretch;
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding: 0.25rem max(0.5rem, env(safe-area-inset-left, 0px))
+    max(0.25rem, env(safe-area-inset-bottom, 0px)) max(0.5rem, env(safe-area-inset-right, 0px));
   position: sticky;
   bottom: 0;
   z-index: 100;
@@ -128,6 +151,7 @@
     gap: 0.25rem;
     padding: 0.625rem 1.25rem;
     flex: 1;
+    min-width: 4rem;
     color: var(--color-text-muted);
     text-decoration: none;
     font-size: 0.75rem;
@@ -181,6 +205,10 @@
 // ─── Tablet e acima ───────────────────────────────────────────────────────────
 
 @media (min-width: 48rem) {
+  .main {
+    padding: 2rem;
+  }
+
   .bottom-nav {
     justify-content: center;
     gap: 0.5rem;
@@ -189,6 +217,62 @@
       flex: none;
       border-radius: 0.5rem;
       padding: 0.625rem 1.5rem;
+      min-width: 8rem;
+    }
+  }
+}
+
+// Paisagem em dispositivos móveis: conserva espaço vertical sem reduzir o
+// alvo de toque mínimo de 44px.
+@media (max-width: 47.999rem) and (orientation: landscape) {
+  .main {
+    padding-block: 0.75rem;
+  }
+
+  .bottom-nav__item {
+    min-height: 3rem;
+    padding-block: 0.5rem;
+  }
+}
+
+// ─── Desktop: 1200px ou mais ─────────────────────────────────────────────────
+
+// Em desktop, a navegação inferior vira barra lateral persistente e o conteúdo
+// usa uma coluna ampla sem perder um limite de leitura.
+@media (min-width: 75rem) {
+  .shell__body {
+    display: grid;
+    grid-template-columns: minmax(14rem, 16rem) minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .main {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+    padding: 2.5rem clamp(2rem, 4vw, 5rem);
+  }
+
+  .bottom-nav {
+    grid-column: 1;
+    grid-row: 1;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 0.5rem;
+    order: initial;
+    padding: 1.5rem 1rem;
+    border-top: 0;
+    border-right: 1px solid var(--color-border);
+    position: static;
+
+    &__item {
+      flex: none;
+      width: 100%;
+      min-height: 2.75rem;
+      justify-content: flex-start;
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius-md);
+      font-size: 0.875rem;
     }
   }
 }
