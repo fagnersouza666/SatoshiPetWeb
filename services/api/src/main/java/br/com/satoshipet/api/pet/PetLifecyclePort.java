@@ -64,15 +64,4 @@ public interface PetLifecyclePort {
      * Reconstrução histórica. Task 7 — no-op neste recorte.
      */
     void reconstruct(UUID petId, Instant now);
-
-    /**
-     * Compatibilidade temporária com o monitor Bitcoin (Task 5).
-     *
-     * <p>Não persiste alimentação. Somente recebimentos on-chain devem
-     * alimentar o pet; nunca compras ou DCA.</p>
-     *
-     * @deprecated usar {@link #onReceiptObserved} / {@link #onReceiptConfirmed}
-     */
-    @Deprecated(since = "motor-do-pet", forRemoval = false)
-    void applyFeeding(UUID petId, long amountSats, Instant when);
 }

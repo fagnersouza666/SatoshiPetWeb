@@ -139,14 +139,6 @@ public class PetEngine implements PetLifecyclePort {
         LOG.infof("reconstruct no-op petId=%s when=%s", petId, now);
     }
 
-    @Override
-    @Deprecated
-    public void applyFeeding(UUID petId, long amountSats, Instant when) {
-        LOG.warnf(
-                "applyFeeding está obsoleto e não persiste alimentação; use onReceiptObserved/Confirmed. petId=%s sats=%d when=%s",
-                petId, amountSats, when);
-    }
-
     private void handleExistingObservation(
             Pet pet,
             PetFeeding feeding,

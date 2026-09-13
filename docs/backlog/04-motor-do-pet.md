@@ -43,7 +43,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §7.2, **CC-10**  
 **Critérios de aceite:** CA-015, CA-016, CA-018  
 **Dependências:** PET-02, BTC-05  
-**Notas técnicas:** `PetEngine` aplica `ReserveMath.hoursAdded` + `applyCap` (168h) ao creditar `PetFeeding`; `applyFeeding` legado no monitor é no-op até o Task 5.
+**Notas técnicas:** `PetEngine` aplica `ReserveMath.hoursAdded` + `applyCap` (168h) ao creditar `PetFeeding`. `BitcoinMonitorService` notifica `PetLifecyclePort` na mesma transação do `LogicalReceipt` (`onReceiptObserved`/`Confirmed`/`Invalidated`, `onBalanceKnown`, `onProviderFailure`); sem pet no endereço, o monitor segue sem lançar.
 
 ---
 

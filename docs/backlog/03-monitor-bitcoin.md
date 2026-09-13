@@ -74,7 +74,7 @@ Validar endereços Mainnet, monitorar saldo/transações via Esplora (porta para
 **Regras de negócio:** §9.2, **CC-14** (ovo vs pet visível)  
 **Critérios de aceite:** CA-012, CA-028  
 **Dependências:** BTC-05, PET (integração)  
-**Notas técnicas:** Detectar tx vista direto em bloco sem passar mempool.
+**Notas técnicas:** Detectar tx vista direto em bloco sem passar mempool. `BitcoinMonitorService` chama `onReceiptObserved` na criação (mempool ou já confirmada) e `onReceiptConfirmed` na transição PENDING→CONFIRMED; criatura não dobra horas (CA-028).
 
 ---
 
@@ -106,6 +106,7 @@ Validar endereços Mainnet, monitorar saldo/transações via Esplora (porta para
 **Regras de negócio:** §9.3  
 **Critérios de aceite:** CA-029, CA-030  
 **Dependências:** BTC-05, PET  
+**Notas técnicas:** Original REPLACED chama `onReceiptInvalidated`; o replacement entra como nova observação (`onReceiptObserved`).
 
 ---
 
@@ -116,7 +117,7 @@ Validar endereços Mainnet, monitorar saldo/transações via Esplora (porta para
 **Regras de negócio:** §9.3  
 **Critérios de aceite:** CA-030, CA-031  
 **Dependências:** BTC-09, PET  
-**Notas técnicas:** Ausência de resposta ≠ descarte comprovado.
+**Notas técnicas:** Ausência de resposta ≠ descarte comprovado. DROPPED chama `onReceiptInvalidated` na mesma transação do recebimento.
 
 ---
 
@@ -127,6 +128,7 @@ Validar endereços Mainnet, monitorar saldo/transações via Esplora (porta para
 **Regras de negócio:** §9.3, §7.5  
 **Critérios de aceite:** CA-032  
 **Dependências:** BTC-08, PET  
+**Notas técnicas:** `handleReorg` devolve o recebimento a pendente, chama `onReceiptObserved(..., confirmed=false)` e `onBalanceKnown` com somas locais dos `LogicalReceipt`. Carência/ovo permanece no Task 6.
 
 ---
 
@@ -205,6 +207,6 @@ de resposta do provedor não é descarte, e uma compra declarada nunca dispara
 
 - [x] Endereço válido Mainnet aceito; inválido rejeitado (`BitcoinAddressValidator` + cadastro/API pública)
 - [x] Backfill completo sem duplicidade (CA-017, CA-033) — `BitcoinMonitorService` + fixtures RBF/reorg
-- [ ] RBF e reorg recalculam pet corretamente (persistência tx ok; motor PET 168h pendente)
+- [x] RBF e reorg notificam o pet (`onReceiptInvalidated` / `onReceiptObserved` + `onBalanceKnown`); carência/ovo ainda no Task 6
 - [x] Falha de provedor não zera saldo (CA-031) — `BitcoinIndexerPort` + testes
 - [x] Dados on-chain públicos sem vazamento privado (CA-009) — `PublicAddressResource` + redaction

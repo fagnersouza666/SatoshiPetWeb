@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * Serviço central do monitor Bitcoin.
@@ -32,7 +33,7 @@ import java.util.UUID;
  * <p>Invariantes críticas preservadas:
  * <ul>
  *   <li>Somente recebimentos on-chain reais alimentam o pet (CA-028, PRD §5).</li>
- *   <li>Eventos de compra declarada NUNCA disparam {@code applyFeeding}.</li>
+ *   <li>Eventos de compra declarada NUNCA disparam {@code PetLifecyclePort}.</li>
  *   <li>Cálculos em sats usam {@code long}; nunca ponto flutuante (CC-10).</li>
  *   <li>Falha de provedor ≠ saldo zero (CA-031).</li>
  * </ul></p>
@@ -107,6 +108,7 @@ public class BitcoinMonitorService {
         if (balance.state() == BitcoinIndexerPort.BalanceState.PROVIDER_FAILURE) {
             LOG.warnf("Provedor inacessível para endereço=%s — estado local preservado", address.canonical);
             state.lastCheckedAt = now;
+            notifyPet(address, pet -> petLifecycle.onProviderFailure(pet.id, now));
             return; // CA-031: falha de provedor não altera estado local
         }
 
@@ -135,6 +137,8 @@ public class BitcoinMonitorService {
         // 7. Emite evento de reconciliação quando saldo confirmado disponível
         if (balance.state() == BitcoinIndexerPort.BalanceState.CONFIRMED) {
             emitReconciliationEvent(address, balance, now);
+            notifyPet(address, pet -> petLifecycle.onBalanceKnown(
+                    pet.id, balance.confirmedSats(), balance.pendingSats(), now));
         }
     }
 
@@ -192,14 +196,15 @@ public class BitcoinMonitorService {
                     return r;
                 });
 
-        if (txInfo.status() == BitcoinTransaction.Status.CONFIRMED) {
+        boolean confirmed = txInfo.status() == BitcoinTransaction.Status.CONFIRMED;
+        if (confirmed) {
             receipt.confirmedSats = txInfo.amountSats();
             receipt.pendingSats   = 0L;
             receipt.updatedAt     = now;
         }
 
-        // Notifica pet lifecycle com recebimento on-chain real (invariante crítica)
-        notifyPetFeeding(address, txInfo.amountSats(), now);
+        notifyPet(address, pet -> petLifecycle.onReceiptObserved(
+                pet.id, receipt.id, txInfo.amountSats(), confirmed, now));
 
         // Emite evento de domínio redagido
         emitTransactionObservedEvent(address, tx, txInfo, now);
@@ -224,11 +229,12 @@ public class BitcoinMonitorService {
                 tx.blockHeight = txInfo.blockHeight();
                 tx.blockHash   = txInfo.blockHash();
 
-                // Atualiza LogicalReceipt
                 LogicalReceipt.findByAddressAndTxid(tx.address, tx.txid).ifPresent(r -> {
                     r.confirmedSats = tx.amountSats;
                     r.pendingSats   = 0L;
                     r.updatedAt     = now;
+                    notifyPet(tx.address, pet -> petLifecycle.onReceiptConfirmed(
+                            pet.id, r.id, tx.amountSats, now));
                 });
 
                 emitTransactionConfirmedEvent(tx.address, tx, previousStatus, txInfo, now);
@@ -237,10 +243,10 @@ public class BitcoinMonitorService {
             case REPLACED -> {
                 tx.status = BitcoinTransaction.Status.REPLACED;
 
-                // Zera saldo pendente do recebimento lógico (sem duplicar)
                 LogicalReceipt.findByAddressAndTxid(tx.address, tx.txid).ifPresent(r -> {
                     r.pendingSats = 0L;
                     r.updatedAt   = now;
+                    notifyPet(tx.address, pet -> petLifecycle.onReceiptInvalidated(pet.id, r.id, now));
                 });
 
                 emitTransactionReplacedEvent(tx.address, tx, txInfo, now);
@@ -249,10 +255,10 @@ public class BitcoinMonitorService {
             case DROPPED -> {
                 tx.status = BitcoinTransaction.Status.DROPPED;
 
-                // Zera saldos pendentes; recalcula sem reescrever histórico (CC-10)
                 LogicalReceipt.findByAddressAndTxid(tx.address, tx.txid).ifPresent(r -> {
                     r.pendingSats = 0L;
                     r.updatedAt   = now;
+                    notifyPet(tx.address, pet -> petLifecycle.onReceiptInvalidated(pet.id, r.id, now));
                 });
 
                 emitTransactionDroppedEvent(tx.address, tx, previousStatus, txInfo, now);
@@ -293,6 +299,12 @@ public class BitcoinMonitorService {
                 r.pendingSats   = r.confirmedSats;
                 r.confirmedSats = 0L;
                 r.updatedAt     = now.isBefore(r.createdAt) ? r.createdAt : now;
+                long pendingAmount = r.pendingSats;
+                notifyPet(tx.address, pet -> {
+                    petLifecycle.onReceiptObserved(pet.id, r.id, pendingAmount, false, now);
+                    long[] totals = localReceiptTotals(tx.address);
+                    petLifecycle.onBalanceKnown(pet.id, totals[0], totals[1], now);
+                });
             });
 
             emitChainReorgEvent(tx.address, tx, reorgEvent, now);
@@ -316,15 +328,19 @@ public class BitcoinMonitorService {
     // Pet lifecycle (invariante crítica: somente recebimentos on-chain reais)
     // -------------------------------------------------------------------------
 
-    private void notifyPetFeeding(Address address, long amountSats, Instant now) {
-        try {
-            Pet.findByAddress(address).ifPresent(pet ->
-                    petLifecycle.applyFeeding(pet.id, amountSats, now)
-            );
-        } catch (Exception e) {
-            // Falha no pet lifecycle NÃO deve reverter a transação de monitoramento
-            LOG.errorf(e, "Falha ao notificar pet lifecycle para endereço=%s", address.canonical);
+    private void notifyPet(Address address, Consumer<Pet> action) {
+        Pet.findByAddress(address).ifPresent(action);
+    }
+
+    /** Somas locais de {@link LogicalReceipt} do endereço (independentes do indexador). */
+    private long[] localReceiptTotals(Address address) {
+        long confirmed = 0L;
+        long pending = 0L;
+        for (LogicalReceipt receipt : LogicalReceipt.findByAddress(address)) {
+            confirmed += receipt.confirmedSats;
+            pending += receipt.pendingSats;
         }
+        return new long[] {confirmed, pending};
     }
 
     // -------------------------------------------------------------------------

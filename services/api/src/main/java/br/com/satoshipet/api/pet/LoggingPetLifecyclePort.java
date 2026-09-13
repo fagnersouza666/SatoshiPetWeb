@@ -3,24 +3,16 @@ package br.com.satoshipet.api.pet;
 import org.jboss.logging.Logger;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.UUID;
 
 /**
- * Helper de teste do ciclo de vida do pet: registra chamadas em memória.
+ * Helper de teste do ciclo de vida do pet: registra chamadas em log.
  *
  * <p>Não é bean CDI; a implementação de produção é {@code PetEngine}.</p>
  */
 public class LoggingPetLifecyclePort implements PetLifecyclePort {
 
     private static final Logger LOG = Logger.getLogger(LoggingPetLifecyclePort.class);
-
-    /** Registro das chamadas para verificação em testes. */
-    public record FeedingCall(UUID petId, long amountSats, Instant when) {}
-
-    private final List<FeedingCall> feedingCalls = Collections.synchronizedList(new ArrayList<>());
 
     @Override
     public void onReceiptObserved(
@@ -70,23 +62,5 @@ public class LoggingPetLifecyclePort implements PetLifecyclePort {
     @Override
     public void reconstruct(UUID petId, Instant now) {
         LOG.infof("[LoggingPetLifecycle] reconstruct petId=%s", petId);
-    }
-
-    @Override
-    @Deprecated
-    public void applyFeeding(UUID petId, long amountSats, Instant when) {
-        feedingCalls.add(new FeedingCall(petId, amountSats, when));
-        LOG.infof("[LoggingPetLifecycle] applyFeeding petId=%s sats=%d when=%s",
-                petId, amountSats, when);
-    }
-
-    /** Retorna cópia imutável das chamadas de alimentação registradas. */
-    public List<FeedingCall> getFeedingCalls() {
-        return List.copyOf(feedingCalls);
-    }
-
-    /** Limpa os registros (útil entre testes). */
-    public void reset() {
-        feedingCalls.clear();
     }
 }

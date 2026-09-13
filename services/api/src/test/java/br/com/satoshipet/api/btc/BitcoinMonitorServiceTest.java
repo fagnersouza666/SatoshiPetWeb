@@ -1,6 +1,15 @@
 package br.com.satoshipet.api.btc;
 
+import br.com.satoshipet.api.account.Account;
+import br.com.satoshipet.api.account.AccountAddressBinding;
 import br.com.satoshipet.api.account.Address;
+import br.com.satoshipet.api.pet.FeedingStatus;
+import br.com.satoshipet.api.pet.Pet;
+import br.com.satoshipet.api.pet.PetFeeding;
+import br.com.satoshipet.api.pet.PetPresentation;
+import br.com.satoshipet.api.pet.PetReferencePortion;
+import br.com.satoshipet.api.pet.PetReferencePortionPort;
+import br.com.satoshipet.api.pet.PortionOrigin;
 import br.com.satoshipet.api.support.bitcoin.BitcoinRbfFixture;
 import br.com.satoshipet.api.support.bitcoin.BitcoinReorgFixture;
 import br.com.satoshipet.api.support.bitcoin.BitcoinTransactionFixture;
@@ -10,9 +19,12 @@ import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -36,6 +48,10 @@ class BitcoinMonitorServiceTest {
 
     @Inject BitcoinMonitorService monitorService;
     @Inject StubBitcoinIndexer stub;
+    @Inject PetReferencePortionPort portionPort;
+
+    private static final BigDecimal TWENTY_FOUR_HOURS =
+            new BigDecimal("24").setScale(10);
 
     @BeforeEach
     @Transactional
@@ -48,12 +64,33 @@ class BitcoinMonitorServiceTest {
 
     private void deletarEnderecoDeFixture(String canonical) {
         Address.findByCanonical(canonical).ifPresent(address -> {
+            List<Account> contas = new ArrayList<>();
+            Pet.findByAddress(address).ifPresent(pet -> {
+                PetFeeding.delete("pet", pet);
+                PetReferencePortion.delete("pet", pet);
+                contas.add(pet.creatorAccount);
+                pet.delete();
+            });
+            AccountAddressBinding.find("address", address).<AccountAddressBinding>list()
+                    .forEach(binding -> {
+                        contas.add(binding.account);
+                        binding.delete();
+                    });
             LogicalReceipt.find("address", address).list()
                     .forEach(r -> ((LogicalReceipt) r).delete());
             BitcoinTransaction.find("address", address).list()
                     .forEach(t -> ((BitcoinTransaction) t).delete());
             // address_monitor_state tem ON DELETE CASCADE — deletado automaticamente
             address.delete();
+            contas.stream()
+                    .map(conta -> conta.id)
+                    .distinct()
+                    .forEach(id -> {
+                        Account conta = Account.findById(id);
+                        if (conta != null) {
+                            conta.delete();
+                        }
+                    });
         });
     }
 
@@ -331,6 +368,103 @@ class BitcoinMonitorServiceTest {
         // Verifica que a transação foi persistida mesmo assim
         List<BitcoinTransaction> txs = BitcoinTransaction.list("address", address);
         assertEquals(1, txs.size());
+        assertTrue(Pet.findByAddress(address).isEmpty());
+    }
+
+    @Test
+    @Transactional
+    void pollConfirmadoComPetCriaAlimentacaoValidaDeVinteQuatroHoras() {
+        Address address = criarEndereco(FIXTURE_ADDR);
+        Pet pet = criarPetComPorcao(address, PetPresentation.EGG);
+        configureStubConfirmed(address.canonical);
+
+        monitorService.pollAddress(address);
+
+        List<PetFeeding> feedings = PetFeeding.listByPet(pet);
+        assertEquals(1, feedings.size(), "Deve criar exatamente 1 alimentação");
+        PetFeeding feeding = feedings.get(0);
+        assertEquals(FeedingStatus.VALID, feeding.status);
+        assertEquals(BitcoinTransactionFixture.AMOUNT_SATS, feeding.amountSats);
+        assertEquals(0, feeding.durationHours.compareTo(TWENTY_FOUR_HOURS));
+        Pet stored = Pet.findById(pet.id);
+        assertEquals(0, stored.reserveHours.compareTo(TWENTY_FOUR_HOURS));
+    }
+
+    @Test
+    @Transactional
+    void pollDuasVezesComPetPersisteSomenteUmaAlimentacao() {
+        Address address = criarEndereco(FIXTURE_ADDR);
+        Pet pet = criarPetComPorcao(address, PetPresentation.EGG);
+        configureStubConfirmed(address.canonical);
+
+        monitorService.pollAddress(address);
+        monitorService.pollAddress(address);
+
+        assertEquals(1, PetFeeding.listByPet(pet).size(),
+                "Segundo poll não duplica alimentação (CA-017)");
+        Pet stored = Pet.findById(pet.id);
+        assertEquals(0, stored.reserveHours.compareTo(TWENTY_FOUR_HOURS));
+    }
+
+    @Test
+    @Transactional
+    void providerFailureComPetNaoAlteraReservaNemApagaTx() {
+        Address address = criarEndereco(FIXTURE_ADDR);
+        Pet pet = criarPetComPorcao(address, PetPresentation.EGG);
+        configureStubConfirmed(address.canonical);
+        monitorService.pollAddress(address);
+
+        Pet afterFeed = Pet.findById(pet.id);
+        assertEquals(0, afterFeed.reserveHours.compareTo(TWENTY_FOUR_HOURS));
+
+        stub.resetAddress(address.canonical);
+        stub.setBalance(address.canonical, new BitcoinIndexerPort.BalanceResult(
+                BitcoinIndexerPort.BalanceState.PROVIDER_FAILURE, 0L, 0L
+        ));
+        monitorService.pollAddress(address);
+
+        Pet afterFailure = Pet.findById(pet.id);
+        assertEquals(0, afterFailure.reserveHours.compareTo(TWENTY_FOUR_HOURS),
+                "PROVIDER_FAILURE não altera reserva (CA-031)");
+        List<BitcoinTransaction> txs = BitcoinTransaction.list("address", address);
+        assertEquals(1, txs.size(), "Transação deve permanecer após PROVIDER_FAILURE");
+        assertEquals(1, PetFeeding.listByPet(pet).size());
+    }
+
+    @Test
+    @Transactional
+    void mempoolDepoisConfirmadoNaCriaturaNaoDobraHoras() {
+        Address address = criarEndereco(FIXTURE_ADDR);
+        Pet pet = criarPetComPorcao(address, PetPresentation.CREATURE);
+
+        stub.addMempoolTransaction(address.canonical, txInfo(
+                BitcoinTransactionFixture.TXID,
+                BitcoinTransactionFixture.AMOUNT_SATS,
+                BitcoinTransaction.Status.PENDING,
+                BitcoinTransactionFixture.MEMPOOL_AT
+        ));
+        monitorService.pollAddress(address);
+
+        Pet afterPending = Pet.findById(pet.id);
+        assertEquals(1, PetFeeding.listByPet(pet).size());
+        assertEquals(FeedingStatus.PROVISIONAL, PetFeeding.listByPet(pet).get(0).status);
+        assertEquals(0, afterPending.reserveHours.compareTo(TWENTY_FOUR_HOURS));
+
+        stub.resetAddress(address.canonical);
+        stub.addTransaction(address.canonical, txInfo(
+                BitcoinTransactionFixture.TXID,
+                BitcoinTransactionFixture.AMOUNT_SATS,
+                BitcoinTransaction.Status.CONFIRMED,
+                BitcoinTransactionFixture.CONFIRMED_AT
+        ));
+        monitorService.pollAddress(address);
+
+        Pet afterConfirm = Pet.findById(pet.id);
+        List<PetFeeding> feedings = PetFeeding.listByPet(pet);
+        assertEquals(1, feedings.size(), "Confirmação não cria segunda alimentação (CA-028)");
+        assertEquals(FeedingStatus.VALID, feedings.get(0).status);
+        assertEquals(0, afterConfirm.reserveHours.compareTo(TWENTY_FOUR_HOURS),
+                "Confirmação da criatura não dobra as horas");
     }
 
     // -------------------------------------------------------------------------
@@ -343,6 +477,29 @@ class BitcoinMonitorServiceTest {
             a.persist();
             return a;
         });
+    }
+
+    private Pet criarPetComPorcao(Address address, PetPresentation presentation) {
+        Instant now = Instant.now();
+        Account account = Account.create(
+                "monitor-" + UUID.randomUUID() + "@test.com",
+                "America/Sao_Paulo",
+                "pt-BR",
+                now
+        );
+        account.persist();
+        AccountAddressBinding.create(account, address, true, now).persist();
+        Pet pet = Pet.create(address, account, "Pixel-monitor", now);
+        pet.presentation = presentation;
+        pet.persist();
+        portionPort.recordPositivePortion(
+                pet.id,
+                account.id,
+                BitcoinTransactionFixture.AMOUNT_SATS,
+                PortionOrigin.CREATOR_PLAN,
+                now
+        );
+        return pet;
     }
 
     private void configureStubConfirmed(String canonical) {
