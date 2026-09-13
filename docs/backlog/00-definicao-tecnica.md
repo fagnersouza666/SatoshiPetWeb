@@ -240,7 +240,7 @@ Entidades principais e invariantes:
 | `DcaPlanVersion` | Versionamento com vigência |
 | `Recommendation` | Uma por conta + ciclo + data local |
 | `ReportedPurchase` | Pertence à conta; projeção pública agregada CC-08 |
-| `PetReferencePortion` | Snapshot compartilhado de porção 24h |
+| `PetReferencePortion` | Snapshot imutável de porção 24h; vigente é da fonte alimentar ativa (CC-05), nunca `latestForPet` global |
 | `PresentationCursor` | Por conta; visitante usa cursor local CC-15 |
 | `Outbox` / `Job` | Idempotência e travas por domínio |
 

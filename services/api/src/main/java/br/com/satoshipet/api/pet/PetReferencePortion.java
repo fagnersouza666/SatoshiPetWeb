@@ -88,4 +88,19 @@ public class PetReferencePortion extends PanacheEntityBase {
     public static Optional<PetReferencePortion> latestForPet(Pet pet) {
         return find("pet = ?1 ORDER BY validFrom DESC", pet).firstResultOptional();
     }
+
+    /**
+     * Snapshot mais recente da fonte indicada
+     * ({@code validFrom} DESC, {@code createdAt} DESC, {@code id} DESC).
+     */
+    public static Optional<PetReferencePortion> latestForPetAndSource(Pet pet, Account source) {
+        Objects.requireNonNull(pet, "pet");
+        Objects.requireNonNull(source, "source");
+        return find(
+                "pet = ?1 AND sourceAccount = ?2 AND portionSats > 0 "
+                        + "ORDER BY validFrom DESC, createdAt DESC, id DESC",
+                pet,
+                source
+        ).firstResultOptional();
+    }
 }
