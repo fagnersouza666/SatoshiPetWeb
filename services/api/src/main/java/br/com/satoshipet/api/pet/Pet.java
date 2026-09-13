@@ -2,15 +2,20 @@ package br.com.satoshipet.api.pet;
 
 import br.com.satoshipet.api.account.Account;
 import br.com.satoshipet.api.account.Address;
+import br.com.satoshipet.api.pet.engine.EmotionalState;
+import br.com.satoshipet.api.pet.engine.ReserveMath;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
@@ -54,11 +59,66 @@ public class Pet extends PanacheEntityBase {
     @Column(name = "updated_at", nullable = false)
     public Instant updatedAt;
 
+    /** Conta cuja porção de 24h alimenta este pet (CC-05). Inicia como o criador. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "food_source_account_id")
+    public Account foodSourceAccount;
+
+    /** Última porção positiva aplicada, em sats. */
+    @Column(name = "last_positive_portion_sats")
+    public Long lastPositivePortionSats;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "last_positive_portion_origin", length = 40)
+    public PortionOrigin lastPositivePortionOrigin;
+
+    /** Reserva de alimentação em horas (NUMERIC, nunca float — CC-10). */
+    @Column(name = "reserve_hours", nullable = false, precision = 20, scale = 10)
+    public BigDecimal reserveHours;
+
+    /** Instant em que a reserva chegou a zero. */
+    @Column(name = "reserve_depleted_at")
+    public Instant reserveDepletedAt;
+
+    /** Última avaliação do motor de estados (UTC). */
+    @Column(name = "last_evaluated_at", nullable = false)
+    public Instant lastEvaluatedAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "emotional_state", nullable = false, length = 20)
+    public EmotionalState emotionalState;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "presentation", nullable = false, length = 20)
+    public PetPresentation presentation;
+
+    /** Nascimento da criatura (saída do ovo). */
+    @Column(name = "born_at")
+    public Instant bornAt;
+
+    /** Início da carência de saldo confirmado zero (retorno ao ovo). */
+    @Column(name = "zero_balance_since")
+    public Instant zeroBalanceSince;
+
+    /** Sem porção de referência ainda (aguardando plano do criador). */
+    @Column(name = "awaiting_reference", nullable = false)
+    public boolean awaitingReference;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "artwork_status", nullable = false, length = 20)
+    public ArtworkStatus artworkStatus;
+
+    @Column(name = "last_returned_to_egg_at")
+    public Instant lastReturnedToEggAt;
+
+    @Column(name = "last_reappeared_at")
+    public Instant lastReappearedAt;
+
     protected Pet() {
         // Construtor exigido pelo Hibernate ORM.
     }
 
-    /** Cria um pet com id gerado. */
+    /** Cria um pet com id gerado e estado inicial do motor (ovo, reserva 0). */
     public static Pet create(Address address, Account creatorAccount, String name, Instant now) {
         Objects.requireNonNull(address, "address");
         Objects.requireNonNull(creatorAccount, "creatorAccount");
@@ -72,6 +132,13 @@ public class Pet extends PanacheEntityBase {
         pet.name = name;
         pet.createdAt = now;
         pet.updatedAt = now;
+        pet.foodSourceAccount = creatorAccount;
+        pet.reserveHours = BigDecimal.ZERO.setScale(ReserveMath.SCALE);
+        pet.lastEvaluatedAt = now;
+        pet.emotionalState = EmotionalState.ALIMENTADO;
+        pet.presentation = PetPresentation.EGG;
+        pet.awaitingReference = true;
+        pet.artworkStatus = ArtworkStatus.NONE;
         return pet;
     }
 

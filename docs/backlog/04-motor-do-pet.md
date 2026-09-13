@@ -21,6 +21,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §16.2, §6.1  
 **Critérios de aceite:** CA-002  
 **Dependências:** FUND-02, CONTA-02  
+**Notas técnicas:** Colunas do motor em `V5__create_pet_engine.sql` (reserva NUMERIC, estado emocional, apresentação ovo/criatura, fonte alimentar CC-05). `Pet.create` inicia ovo, reserva 0 e fonte = criador.  
 
 ---
 
@@ -31,7 +32,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §6.2, **CC-05**  
 **Critérios de aceite:** CA-002 (estado compartilhado)  
 **Dependências:** PET-01, DCA-15 (porção referência)  
-**Notas técnicas:** Conta secundária vê "Sua sugestão" vs "Porção 24h do pet".
+**Notas técnicas:** Conta secundária vê "Sua sugestão" vs "Porção 24h do pet". Histórico de porção em `pet_reference_portions` (`V5__create_pet_engine.sql`).
 
 ---
 
@@ -72,6 +73,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §7.2, §9.3  
 **Critérios de aceite:** CA-017, CA-029, CA-030  
 **Dependências:** PET-03, BTC-05  
+**Notas técnicas:** Tabela `pet_feedings` em `V5__create_pet_engine.sql`; UNIQUE `(pet_id, logical_receipt_id)` (CA-017).  
 
 ---
 
@@ -162,7 +164,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §9.5, **CC-15**  
 **Critérios de aceite:** CA-034, CA-035  
 **Dependências:** FUND-05, PWA  
-**Notas técnicas:** Visitante usa cursor local; sincronizar entre dispositivos da mesma conta.
+**Notas técnicas:** Visitante usa cursor local; sincronizar entre dispositivos da mesma conta. Persistência em `presentation_cursors` (`V5__create_pet_engine.sql`), um cursor por conta.
 
 ---
 

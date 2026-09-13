@@ -36,7 +36,10 @@ class FlywayMigrationTest {
             "BITCOIN_SPENDS",
             "LOGICAL_RECEIPTS",
             "ADDRESS_MONITOR_STATE",
-            "RECOVERY_CODES"
+            "RECOVERY_CODES",
+            "PET_FEEDINGS",
+            "PET_REFERENCE_PORTIONS",
+            "PRESENTATION_CURSORS"
     );
 
     @Inject
