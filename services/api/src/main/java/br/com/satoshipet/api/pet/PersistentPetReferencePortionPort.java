@@ -70,7 +70,7 @@ public class PersistentPetReferencePortionPort implements PetReferencePortionPor
             pet.updatedAt = validFrom;
         }
         if (wasAwaitingReference && !pet.awaitingReference) {
-            lifecycle.get().reconstruct(petId, validFrom);
+            lifecycle.get().reconstruct(petId, validFrom, wasAwaitingReference);
         }
     }
 

@@ -65,4 +65,12 @@ public interface PetLifecyclePort {
      * (PET-08, PET-10, CA-014, CA-027). Sem porção positiva, permanece no-op.
      */
     void reconstruct(UUID petId, Instant now);
+
+    /**
+     * Reconstrução que preserva o {@code awaitingReference} anterior à virada
+     * true→false já persistida pelo port da porção (PET-16).
+     */
+    default void reconstruct(UUID petId, Instant now, boolean awaitingReferenceBefore) {
+        reconstruct(petId, now);
+    }
 }

@@ -21,6 +21,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -107,18 +108,69 @@ class PetEngineOutboxTest {
     @Test
     @Transactional
     void reconstructHistoricoNaoEmiteEventosDeAlimentacao() {
-        Fixture fixture = persistPet("outbox-recon", PetPresentation.EGG, false);
+        Fixture fixture = persistPet("outbox-recon", PetPresentation.EGG, true);
         persistConfirmedReceipt(fixture, FIVE_THOUSAND, 100, NOW.minusNanos(1));
         persistConfirmedReceipt(fixture, 10_000L, 101, NOW.minusNanos(1));
+
+        lifecycle.reconstruct(fixture.pet.id, NOW);
+
+        Pet pet = Pet.findById(fixture.pet.id);
+        List<PetFeeding> feedings = PetFeeding.listByPet(pet);
+        assertEquals(2, feedings.size(), "reconstruct deve criar as alimentações históricas");
+        assertTrue(feedings.stream().allMatch(f -> f.origin == FeedingOrigin.HISTORICAL_RECONSTRUCTION));
+        List<OutboxEvent> feedingEvents = petEvents(pet).stream()
+                .filter(event -> event.eventType.startsWith("PET_FEEDING_"))
+                .toList();
+        assertTrue(feedingEvents.isEmpty(), "reconstrução histórica não emite PET_FEEDING_* (CA-014)");
+    }
+
+    @Test
+    @Transactional
+    void reaparecimentoNoOvoComArtePendenteNaoEmitePetReappeared() {
+        Fixture fixture = persistPet("outbox-reapp-egg", PetPresentation.EGG, true);
+        Pet stored = Pet.findById(fixture.pet.id);
+        stored.bornAt = NOW.minusSeconds(3600);
+        stored.artworkStatus = ArtworkStatus.PENDING;
+        stored.presentation = PetPresentation.EGG;
+
+        lifecycle.onBalanceKnown(fixture.pet.id, FIVE_THOUSAND, 0L, NOW);
+
+        Pet pet = Pet.findById(fixture.pet.id);
+        assertEquals(PetPresentation.EGG, pet.presentation);
+        assertNotNull(pet.lastReappearedAt);
+        assertTrue(eventsOf(pet, "PET_REAPPEARED").isEmpty());
+    }
+
+    @Test
+    @Transactional
+    void reaparecimentoOvoParaCriaturaEmitePetReappeared() {
+        Fixture fixture = persistPet("outbox-reapp-ok", PetPresentation.EGG, true);
+        Pet stored = Pet.findById(fixture.pet.id);
+        stored.bornAt = NOW.minusSeconds(3600);
+        stored.artworkStatus = ArtworkStatus.APPROVED;
+        stored.presentation = PetPresentation.EGG;
+
+        lifecycle.onBalanceKnown(fixture.pet.id, FIVE_THOUSAND, 0L, NOW);
+
+        Pet pet = Pet.findById(fixture.pet.id);
+        assertEquals(PetPresentation.CREATURE, pet.presentation);
+        assertEquals(1, eventsOf(pet, "PET_REAPPEARED").size());
+    }
+
+    @Test
+    @Transactional
+    void primeiraPorcaoSemHistoricoEmitePetStateChanged() {
+        Fixture fixture = persistPet("outbox-await", PetPresentation.EGG, false);
+        Pet beforePortion = Pet.findById(fixture.pet.id);
+        assertTrue(beforePortion.awaitingReference);
 
         portionPort.recordPositivePortion(
                 fixture.pet.id, fixture.account.id, PORTION_SATS, PortionOrigin.CREATOR_PLAN, NOW);
 
         Pet pet = Pet.findById(fixture.pet.id);
-        List<OutboxEvent> feeding = petEvents(pet).stream()
-                .filter(event -> event.eventType.startsWith("PET_FEEDING_"))
-                .toList();
-        assertTrue(feeding.isEmpty(), "reconstrução histórica não emite PET_FEEDING_* (CA-014)");
+        assertFalse(pet.awaitingReference);
+        assertEquals(1, eventsOf(pet, "PET_STATE_CHANGED").size());
+        assertFalse(petEvents(pet).isEmpty(), "primeira porção sem histórico não pode gerar zero eventos");
     }
 
     @Test

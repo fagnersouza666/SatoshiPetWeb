@@ -107,7 +107,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** **CC-11**  
 **Critérios de aceite:** CA-026, CA-027  
 **Dependências:** PET-02, DCA  
-**Notas técnicas:** `PetEngine.reconstruct` faz replay de `LogicalReceipt` confirmados (altura de bloco, depois instante, depois txid), cap 168h por evento, alimentações novas com origem `HISTORICAL_RECONSTRUCTION` e `presentable=false`. LIVE observada após o cadastro permanece apresentável. A primeira virada `awaitingReference` true→false em `PersistentPetReferencePortionPort` dispara o replay via `Instance<PetLifecyclePort>` (evita ciclo CDI). Sem porção positiva o método retorna sem creditar (CA-026).
+**Notas técnicas:** `PetEngine.reconstruct` faz replay de `LogicalReceipt` confirmados (altura de bloco, depois instante, depois txid), cap 168h por evento, alimentações novas com origem `HISTORICAL_RECONSTRUCTION` e `presentable=false`. LIVE observada após o cadastro permanece apresentável. A primeira virada `awaitingReference` true→false em `PersistentPetReferencePortionPort` dispara o replay via `Instance<PetLifecyclePort>` passando o flag anterior, para emitir `PET_STATE_CHANGED` (ou `PET_BORN` se o replay nascer o pet). Sem porção positiva o método retorna sem creditar (CA-026).
 
 ---
 
@@ -182,7 +182,9 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Critérios de aceite:** —  
 **Dependências:** FUND-04  
 **Notas técnicas:** `PetEngine` grava `PET_*` na outbox na mesma TX
-(`aggregateType=Pet`, payload público CA-009). Contrato:
+(`aggregateType=Pet`, payload público CA-009). `PET_REAPPEARED` exige
+`EGG`→`CREATURE`. A virada `awaitingReference` true→false emite
+`PET_STATE_CHANGED` quando não coberta por BORN/EGG/REAPPEARED. Contrato:
 [`docs/contratos/eventos-pet.md`](../contratos/eventos-pet.md). `PET_ARTWORK_READY` fica no épico ART.  
 
 ---

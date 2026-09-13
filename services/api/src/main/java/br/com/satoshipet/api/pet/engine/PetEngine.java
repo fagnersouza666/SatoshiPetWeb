@@ -187,13 +187,30 @@ public class PetEngine implements PetLifecyclePort {
     @Override
     @Transactional
     public void reconstruct(UUID petId, Instant now) {
-        Objects.requireNonNull(now, "now");
         Pet pet = loadPet(petId);
-        Optional<ResolvedPortion> portion = portionPort.currentPositivePortion(petId);
+        reconstruct(pet, now, pet.awaitingReference);
+    }
+
+    @Override
+    @Transactional
+    public void reconstruct(UUID petId, Instant now, boolean awaitingReferenceBefore) {
+        reconstruct(loadPet(petId), now, awaitingReferenceBefore);
+    }
+
+    private void reconstruct(Pet pet, Instant now, boolean awaitingReferenceBefore) {
+        Objects.requireNonNull(now, "now");
+        Optional<ResolvedPortion> portion = portionPort.currentPositivePortion(pet.id);
         if (portion.isEmpty()) {
             return;
         }
-        PetSnapshot before = snapshot(pet);
+        PetSnapshot live = snapshot(pet);
+        PetSnapshot before = new PetSnapshot(
+                live.presentation(),
+                live.emotionalState(),
+                live.bornAt(),
+                live.lastReappearedAt(),
+                awaitingReferenceBefore
+        );
         long portionSats = portion.get().portionSats();
         List<ReplayEvent> events = orderConfirmedReceipts(pet);
         pet.reserveHours = ZERO_HOURS;
@@ -564,7 +581,9 @@ public class PetEngine implements PetLifecyclePort {
         boolean born = before.bornAt() == null && pet.bornAt != null;
         boolean returnedToEgg = before.presentation() == PetPresentation.CREATURE
                 && pet.presentation == PetPresentation.EGG;
-        boolean reappeared = pet.lastReappearedAt != null
+        boolean reappeared = before.presentation() == PetPresentation.EGG
+                && pet.presentation == PetPresentation.CREATURE
+                && pet.lastReappearedAt != null
                 && (before.lastReappearedAt() == null
                 || before.lastReappearedAt().isBefore(pet.lastReappearedAt));
         if (born) {

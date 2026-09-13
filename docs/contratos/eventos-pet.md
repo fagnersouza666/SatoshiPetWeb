@@ -20,7 +20,7 @@ Não emitir `PET_ARTWORK_READY` neste recorte (épico ART).
 | `PET_FEEDING_INVALIDATED` | Alimentação `LIVE` invalidada |
 | `PET_BORN` | Primeira vez em que `bornAt` é preenchido |
 | `PET_RETURNED_TO_EGG` | Apresentação `CREATURE` → `EGG` |
-| `PET_REAPPEARED` | Apresentação `EGG` → `CREATURE` após já ter nascido (`lastReappearedAt` preenchido) |
+| `PET_REAPPEARED` | Apresentação `EGG` → `CREATURE` após já ter nascido. Só `lastReappearedAt` sem virar criatura (arte `PENDING`) **não** emite |
 | `PET_STATE_CHANGED` | `emotionalState` mudou após `evaluate` (somente criatura) **ou** virada de apresentação/`awaitingReference` não coberta por BORN/EGG/REAPPEARED |
 
 Confirmação de um `PROVISIONAL` que apenas promove a `VALID` com as mesmas
