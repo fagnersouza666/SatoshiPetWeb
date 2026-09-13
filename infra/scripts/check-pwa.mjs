@@ -21,6 +21,7 @@ function executar(comando, args, cwd = raiz) {
 }
 
 executar(process.execPath, [path.join(__dirname, 'versao.mjs'), 'verificar']);
+executar(process.execPath, [path.join(__dirname, 'ngsw-pet-assets.test.mjs')]);
 
 console.log(`==> Verificando a PWA em ${path.join(raiz, 'apps/pwa')}`);
 executar(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'test:pwa'], raiz);
