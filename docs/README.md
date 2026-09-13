@@ -12,6 +12,11 @@
 
 | Documento | Descrição |
 |-----------|-----------|
+| [contratos/magic-link.md](./contratos/magic-link.md) | Solicitação de magic link (`POST /auth/magic-link`) |
+| [contratos/magic-link-verify.md](./contratos/magic-link-verify.md) | Verificação do token e decisão registro vs sessão |
+| [contratos/sessao-csrf.md](./contratos/sessao-csrf.md) | Cookie `sp_session`, header CSRF e revogação |
+| [contratos/websocket-endereco.md](./contratos/websocket-endereco.md) | Canal WS por endereço — snapshot, cursor e RECONNECT |
+| [contratos/bitcoin-indexer-port.md](./contratos/bitcoin-indexer-port.md) | Porta de indexador on-chain (Esplora/stub) |
 | [contratos/eventos-bitcoin.md](./contratos/eventos-bitcoin.md) | Catálogo versionado de eventos e transições do monitor Bitcoin |
 | [contratos/eventos-bitcoin-redaction.md](./contratos/eventos-bitcoin-redaction.md) | Allowlist e redaction da projeção pública dos eventos Bitcoin |
 

@@ -60,3 +60,24 @@ private readonly BITCOIN_ADDRESS_PATTERN = /^[13][a-km-zA-HJ-NP-Z1-9]{24,33}$|^b
 - **Estado sem mutação**: `session.account` exposto como `ReadonlySignal` — impossível de modificar externamente.
 - **Logout seguro**: ordem correta (servidor → cache → memória → navegação) e resiliente a falha de rede.
 - **Promise.allSettled no clearPrivateCaches**: garante que a falha em deletar um cache não impede a limpeza dos demais.
+
+---
+
+## API — correções FUND/CONTA/BTC (12/09/2026)
+
+| Severidade | Qtd | Veredicto |
+|------------|-----|-----------|
+| CRÍTICO | 0 | **APROVADO** |
+| ALTO | 3 corrigidos | ver abaixo |
+| MÉDIO | 1 pendente | dedup `BITCOIN_BALANCE_RECONCILED` |
+
+### Corrigidos nesta entrega
+
+1. **Pet duplicado no registro compartilhado** — `RegistrationService` reutiliza `Pet.findByAddress` quando o endereço já tem criatura.
+2. **Violação unique ao trocar de volta** — `AccountAddressChangeService` reativa vínculo histórico via `rebindAsPrimary` + `findByAccountAndCanonical`.
+3. **Magic link 503 no Compose** — `satoshi-pet.magic-link.ttl=${MAGIC_LINK_TTL:PT15M}` ligado ao env do Compose.
+4. **Testes** — endereços determinísticos (`BitcoinTestAddresses`), `mockito-core` explícito, `correlation_id` ≤ 36 chars.
+
+### Pendente (não bloqueia unit tests)
+
+- **BUG-002 (MÉDIO):** `BitcoinMonitorService` emite `BITCOIN_BALANCE_RECONCILED` a cada poll sem deduplicação — endereço ativo gera outbox repetido a cada ciclo.
