@@ -26,6 +26,7 @@
 | Documento | Descrição |
 |-----------|-----------|
 | [operacao/csp.md](./operacao/csp.md) | Política CSP da PWA, origens permitidas e verificação |
+| [operacao/cors.md](./operacao/cors.md) | Allowlist de origens da API e verificação de rejeição |
 
 ## Backlog de implementação
 
