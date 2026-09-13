@@ -21,6 +21,12 @@
 | [contratos/eventos-bitcoin.md](./contratos/eventos-bitcoin.md) | Catálogo versionado de eventos e transições do monitor Bitcoin |
 | [contratos/eventos-bitcoin-redaction.md](./contratos/eventos-bitcoin-redaction.md) | Allowlist e redaction da projeção pública dos eventos Bitcoin |
 
+## Operação
+
+| Documento | Descrição |
+|-----------|-----------|
+| [operacao/csp.md](./operacao/csp.md) | Política CSP da PWA, origens permitidas e verificação |
+
 ## Backlog de implementação
 
 O backlog está organizado em épicos em [backlog/](./backlog/):
@@ -63,6 +69,7 @@ Os comandos abaixo devem ser executados na raiz do repositório:
 | `npm run verify` | Confere a versão do produto, testa a PWA e executa `verify` da API |
 | `npm run test:versao` | Testes do script `infra/scripts/versao.mjs` |
 | `npm run test:infra` | Teste do bootstrap idempotente dos buckets MinIO |
+| `npm run test:csp` | Verifica a CSP canônica no Caddy, nginx e API |
 | `npm run versao -- atual` | Mostra as versões da raiz, PWA e API |
 | `npm run versao -- verificar` | Falha se as três versões divergirem |
 | `npm run check:pwa` | Prova local da PWA (`versao verificar` + testes) |

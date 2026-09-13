@@ -28,6 +28,13 @@
 :443 {
     tls internal
 
+    # CSP da PWA; scripts e workers vêm somente do mesmo origin.
+    # Estilos inline são necessários para a injeção de estilos do Angular;
+    # URLs HTTPS de imagens cobrem sprites assinados do object storage.
+    header {
+        Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; media-src 'self'; connect-src 'self' wss:; worker-src 'self'; manifest-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    }
+
     # Quarkus health, métricas e liveness/readiness probes
     handle /q/* {
         reverse_proxy api:8080

@@ -56,6 +56,7 @@
 
     # Headers de segurança
     header {
+        Content-Security-Policy     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; media-src 'self'; connect-src 'self' wss:; worker-src 'self'; manifest-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
         X-Content-Type-Options    "nosniff"
         X-Frame-Options           "DENY"

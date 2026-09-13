@@ -25,8 +25,12 @@ public class SecurityHeadersFilter implements ContainerResponseFilter {
             + "style-src 'self' 'unsafe-inline'; "
             + "img-src 'self' data: https:; "
             + "font-src 'self'; "
+            + "media-src 'self'; "
             + "connect-src 'self' wss:; "
             + "worker-src 'self'; "
+            + "manifest-src 'self'; "
+            + "object-src 'none'; "
+            + "frame-src 'none'; "
             + "frame-ancestors 'none'; "
             + "base-uri 'self'; "
             + "form-action 'self'";
