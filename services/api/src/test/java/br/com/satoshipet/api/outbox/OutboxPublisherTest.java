@@ -7,6 +7,7 @@ import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -14,6 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @QuarkusTest
 class OutboxPublisherTest {
@@ -113,5 +120,65 @@ class OutboxPublisherTest {
         assertNotNull(second);
         assertNotNull(first.processedAt);
         assertNotNull(second.processedAt);
+    }
+
+    @Test
+    @Transactional
+    void falhaMantemEventoPendenteEProximoPollProcessaSemReentrega() {
+        UUID eventId = UUID.randomUUID();
+        String aggregateId = "account-retry-" + UUID.randomUUID();
+        String eventType = "TEST_RETRY_" + UUID.randomUUID().toString().substring(0, 8);
+        FailingOnceConsumer consumer = new FailingOnceConsumer(eventType);
+        JobLockService locks = mock(JobLockService.class);
+        when(locks.acquire(anyString(), anyString(), eq(OutboxPublisher.LOCK_TTL))).thenReturn(true);
+        OutboxPublisher testPublisher = new OutboxPublisher(locks, List.of(consumer));
+
+        outboxService.save(eventId, "Account", aggregateId, eventType, "{}", null);
+
+        testPublisher.processNextBatch();
+
+        OutboxEvent afterFailure = OutboxEvent.findById(eventId);
+        assertNotNull(afterFailure);
+        assertNull(afterFailure.processedAt, "Falha do consumidor não pode marcar evento como processado");
+        assertEquals(1, afterFailure.retries);
+        assertEquals(1, consumer.attempts);
+
+        testPublisher.processNextBatch();
+
+        OutboxEvent afterRetry = OutboxEvent.findById(eventId);
+        assertNotNull(afterRetry);
+        assertNotNull(afterRetry.processedAt, "Retry bem-sucedido deve marcar evento como processado");
+        assertEquals(1, afterRetry.retries);
+        assertEquals(2, consumer.attempts);
+
+        testPublisher.processNextBatch();
+
+        assertEquals(2, consumer.attempts, "Evento processado não deve ser entregue novamente");
+        verify(locks, times(2)).acquire(anyString(), anyString(), eq(OutboxPublisher.LOCK_TTL));
+    }
+
+    private static final class FailingOnceConsumer implements OutboxConsumer {
+
+        private final String eventType;
+        private int attempts;
+        private boolean failed;
+
+        private FailingOnceConsumer(String eventType) {
+            this.eventType = eventType;
+        }
+
+        @Override
+        public void consume(OutboxEvent event) {
+            attempts++;
+            if (!failed) {
+                failed = true;
+                throw new IllegalStateException("falha transitória de teste");
+            }
+        }
+
+        @Override
+        public boolean supports(String eventType) {
+            return this.eventType.equals(eventType);
+        }
     }
 }
