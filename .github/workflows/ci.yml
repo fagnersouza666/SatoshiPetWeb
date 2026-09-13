@@ -83,6 +83,7 @@ jobs:
           java-version: "25"
           distribution: "temurin"
           cache: "maven"
+          cache-dependency-path: services/api/pom.xml
 
       - name: Permissão no Maven Wrapper
         working-directory: services/api
