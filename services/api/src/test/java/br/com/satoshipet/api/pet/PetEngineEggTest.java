@@ -214,6 +214,23 @@ class PetEngineEggTest {
 
     @Test
     @Transactional
+    void pet13InvalidarUmaDeDuasConfirmadasNaoForcaOvoSeSaldoResta() {
+        Fixture fixture = persistBornCreature("pet13-keep");
+        UUID fed = persistConfirmedReceipt(fixture, FIVE_THOUSAND);
+        persistConfirmedReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, fed, FIVE_THOUSAND, true, NOW);
+
+        lifecycle.onReceiptInvalidated(fixture.pet.id, fed, NOW);
+
+        Pet pet = Pet.findById(fixture.pet.id);
+        assertEquals(PetPresentation.CREATURE, pet.presentation,
+                "invalidar a última VALID não força ovo se ainda há sats confirmados");
+        assertEquals(NOW, pet.bornAt);
+        assertNull(pet.lastReturnedToEggAt);
+    }
+
+    @Test
+    @Transactional
     void pet13ReorgDaUltimaValidaNaCriaturaVoltaAoOvoEMantemHoras() {
         Fixture fixture = persistBornCreature("pet13-reorg");
         UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
@@ -327,6 +344,19 @@ class PetEngineEggTest {
                 amountSats,
                 NOW
         );
+        receipt.persist();
+        return receipt.id;
+    }
+
+    private static UUID persistConfirmedReceipt(Fixture fixture, long amountSats) {
+        LogicalReceipt receipt = LogicalReceipt.createPending(
+                fixture.address,
+                UUID.randomUUID().toString().replace("-", ""),
+                amountSats,
+                NOW
+        );
+        receipt.confirmedSats = amountSats;
+        receipt.pendingSats = 0L;
         receipt.persist();
         return receipt.id;
     }

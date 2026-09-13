@@ -43,7 +43,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §7.2, **CC-10**  
 **Critérios de aceite:** CA-015, CA-016, CA-018  
 **Dependências:** PET-02, BTC-05  
-**Notas técnicas:** `PetEngine` aplica `ReserveMath.hoursAdded` + `applyCap` (168h) ao creditar `PetFeeding`. `BitcoinMonitorService` notifica `PetLifecyclePort` na mesma transação do `LogicalReceipt` (`onReceiptObserved`/`Confirmed`/`Invalidated`, `onBalanceKnown`, `onProviderFailure`); sem pet no endereço, o monitor segue sem lançar.
+**Notas técnicas:** `PetEngine` aplica `ReserveMath.hoursAdded` + `applyCap` (168h) ao creditar. `creditDelta` devolve o delta **aplicado** (`reservaDepois − reservaAntes`); `PetFeeding.durationHours` guarda só as horas que de fato entraram (CA-016). Invalidar/revisar/rebaixar reverte essa duração armazenada — excesso descartado pelo teto não volta a ser cobrado. `BitcoinMonitorService` notifica `PetLifecyclePort` na mesma transação do `LogicalReceipt` (`onReceiptObserved`/`Confirmed`/`Invalidated`, `onBalanceKnown`, `onProviderFailure`); RBF de produção é txid = recebimento lógico (`REPLACED`/`DROPPED` → `onReceiptInvalidated`, substituto chega como nova observação). Sem pet no endereço, o monitor segue sem lançar.
 
 ---
 
@@ -75,7 +75,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §7.2, §9.3  
 **Critérios de aceite:** CA-017, CA-029, CA-030  
 **Dependências:** PET-03, BTC-05  
-**Notas técnicas:** Tabela `pet_feedings` em `V5__create_pet_engine.sql`; UNIQUE `(pet_id, logical_receipt_id)` (CA-017). `PetEngine` (`PetLifecyclePort`) persiste LIVE idempotente; RBF via `onReceiptRevised` (delta de duração); invalidação marca `INVALIDATED` e devolve horas creditadas sem apagar a linha. Sem porção positiva (CC-11) não cria alimentação.  
+**Notas técnicas:** Tabela `pet_feedings` em `V5__create_pet_engine.sql`; UNIQUE `(pet_id, logical_receipt_id)` (CA-017). `PetEngine` (`PetLifecyclePort`) persiste LIVE idempotente; `onReceiptRevised` recalcula com `feeding.portionSats` (snapshot imutável, não a porção vigente). Invalidação marca `INVALIDATED` e devolve `durationHours` efetivas sem apagar a linha. Sem porção positiva (CC-11) não cria alimentação.  
 
 ---
 
@@ -149,6 +149,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §7.5  
 **Critérios de aceite:** CA-032 (parcial pet)  
 **Dependências:** BTC-11, PET-11  
+**Notas técnicas:** `immediateEggOnLostBirthFoundation` usa o saldo confirmado dos *outros* `LogicalReceipt` do endereço (não `0L` fixo). Invalidar a última VALID não manda ao ovo se ainda há sats confirmados.  
 
 ---
 

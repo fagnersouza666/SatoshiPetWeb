@@ -3,6 +3,7 @@ package br.com.satoshipet.api.btc;
 import br.com.satoshipet.api.account.Account;
 import br.com.satoshipet.api.account.AccountAddressBinding;
 import br.com.satoshipet.api.account.Address;
+import br.com.satoshipet.api.pet.FeedingOrigin;
 import br.com.satoshipet.api.pet.FeedingStatus;
 import br.com.satoshipet.api.pet.Pet;
 import br.com.satoshipet.api.pet.PetFeeding;
@@ -52,6 +53,10 @@ class BitcoinMonitorServiceTest {
 
     private static final BigDecimal TWENTY_FOUR_HOURS =
             new BigDecimal("24").setScale(10);
+    private static final BigDecimal MAX_RESERVE_HOURS =
+            new BigDecimal("168").setScale(10);
+    private static final long PORTION_SATS = 20_000L;
+    private static final String CAP_FILLER_TXID = "aa".repeat(32);
 
     @BeforeEach
     @Transactional
@@ -470,6 +475,107 @@ class BitcoinMonitorServiceTest {
                 "Confirmação da criatura não dobra as horas");
     }
 
+    @Test
+    @Transactional
+    void rbfInvalidaOriginalECriaAlimentacaoLiveDoSubstituto() {
+        Address address = criarEndereco(RBF_ADDR);
+        Pet pet = criarPetComPorcao(address, PetPresentation.CREATURE, PORTION_SATS);
+
+        stub.addMempoolTransaction(address.canonical, txInfo(
+                BitcoinRbfFixture.ORIGINAL_TXID,
+                BitcoinRbfFixture.ORIGINAL_RECEIVED_SATS,
+                BitcoinTransaction.Status.PENDING,
+                BitcoinRbfFixture.ORIGINAL_MEMPOOL_AT
+        ));
+        monitorService.pollAddress(address);
+
+        stub.resetAddress(address.canonical);
+        stub.addMempoolTransaction(address.canonical, txInfo(
+                BitcoinRbfFixture.ORIGINAL_TXID,
+                BitcoinRbfFixture.ORIGINAL_RECEIVED_SATS,
+                BitcoinTransaction.Status.REPLACED,
+                BitcoinRbfFixture.ORIGINAL_REPLACED_AT
+        ));
+        stub.addMempoolTransaction(address.canonical, txInfo(
+                BitcoinRbfFixture.REPLACEMENT_TXID,
+                BitcoinRbfFixture.REPLACEMENT_RECEIVED_SATS,
+                BitcoinTransaction.Status.PENDING,
+                BitcoinRbfFixture.REPLACEMENT_AT
+        ));
+        monitorService.pollAddress(address);
+
+        List<PetFeeding> feedings = PetFeeding.listByPet(pet);
+        assertEquals(2, feedings.size(), "RBF gera INVALIDATED + nova LIVE, sem fundir recibos");
+        long invalidated = feedings.stream().filter(f -> f.status == FeedingStatus.INVALIDATED).count();
+        long live = feedings.stream()
+                .filter(f -> f.origin == FeedingOrigin.LIVE && f.status != FeedingStatus.INVALIDATED)
+                .count();
+        assertEquals(1, invalidated);
+        assertEquals(1, live);
+        PetFeeding substitute = feedings.stream()
+                .filter(f -> f.status != FeedingStatus.INVALIDATED)
+                .findFirst()
+                .orElseThrow();
+        assertEquals(BitcoinRbfFixture.REPLACEMENT_RECEIVED_SATS, substitute.amountSats);
+        Pet stored = Pet.findById(pet.id);
+        assertEquals(0, stored.reserveHours.compareTo(substitute.durationHours),
+                "reserva após RBF deve ser as horas do substituto");
+    }
+
+    @Test
+    @Transactional
+    void rbfDoEstouroDoTetoNaoDesfazHorasCapadas() {
+        Address address = criarEndereco(RBF_ADDR);
+        Pet pet = criarPetComPorcao(address, PetPresentation.CREATURE, PORTION_SATS);
+        stub.setBalance(address.canonical, new BitcoinIndexerPort.BalanceResult(
+                BitcoinIndexerPort.BalanceState.CONFIRMED, 140_000L, 0L));
+        stub.addTransaction(address.canonical, txInfo(
+                CAP_FILLER_TXID, 140_000L, BitcoinTransaction.Status.CONFIRMED, Instant.now()));
+        monitorService.pollAddress(address);
+        Pet afterFill = Pet.findById(pet.id);
+        assertEquals(0, afterFill.reserveHours.compareTo(MAX_RESERVE_HOURS));
+
+        stub.resetAddress(address.canonical);
+        stub.setBalance(address.canonical, new BitcoinIndexerPort.BalanceResult(
+                BitcoinIndexerPort.BalanceState.CONFIRMED, 140_000L, BitcoinRbfFixture.ORIGINAL_RECEIVED_SATS));
+        stub.addMempoolTransaction(address.canonical, txInfo(
+                BitcoinRbfFixture.ORIGINAL_TXID,
+                BitcoinRbfFixture.ORIGINAL_RECEIVED_SATS,
+                BitcoinTransaction.Status.PENDING,
+                BitcoinRbfFixture.ORIGINAL_MEMPOOL_AT
+        ));
+        monitorService.pollAddress(address);
+
+        stub.resetAddress(address.canonical);
+        stub.setBalance(address.canonical, new BitcoinIndexerPort.BalanceResult(
+                BitcoinIndexerPort.BalanceState.CONFIRMED, 140_000L, BitcoinRbfFixture.REPLACEMENT_RECEIVED_SATS));
+        stub.addMempoolTransaction(address.canonical, txInfo(
+                BitcoinRbfFixture.ORIGINAL_TXID,
+                BitcoinRbfFixture.ORIGINAL_RECEIVED_SATS,
+                BitcoinTransaction.Status.REPLACED,
+                BitcoinRbfFixture.ORIGINAL_REPLACED_AT
+        ));
+        stub.addMempoolTransaction(address.canonical, txInfo(
+                BitcoinRbfFixture.REPLACEMENT_TXID,
+                BitcoinRbfFixture.REPLACEMENT_RECEIVED_SATS,
+                BitcoinTransaction.Status.PENDING,
+                BitcoinRbfFixture.REPLACEMENT_AT
+        ));
+        monitorService.pollAddress(address);
+
+        List<PetFeeding> feedings = PetFeeding.listByPet(pet);
+        assertEquals(3, feedings.size());
+        long invalidated = feedings.stream().filter(f -> f.status == FeedingStatus.INVALIDATED).count();
+        long live = feedings.stream()
+                .filter(f -> f.origin == FeedingOrigin.LIVE && f.status != FeedingStatus.INVALIDATED)
+                .count();
+        assertEquals(1, invalidated);
+        assertEquals(2, live);
+        Pet stored = Pet.findById(pet.id);
+        assertEquals(0, stored.reserveHours.compareTo(MAX_RESERVE_HOURS),
+                "RBF do excesso no teto não pode desfazer as 168h já capadas");
+    }
+
     // -------------------------------------------------------------------------
     // Helpers (sem @Transactional — herdam transação do método de teste)
     // -------------------------------------------------------------------------
@@ -483,6 +589,10 @@ class BitcoinMonitorServiceTest {
     }
 
     private Pet criarPetComPorcao(Address address, PetPresentation presentation) {
+        return criarPetComPorcao(address, presentation, BitcoinTransactionFixture.AMOUNT_SATS);
+    }
+
+    private Pet criarPetComPorcao(Address address, PetPresentation presentation, long portionSats) {
         Instant now = Instant.now();
         Account account = Account.create(
                 "monitor-" + UUID.randomUUID() + "@test.com",
@@ -498,7 +608,7 @@ class BitcoinMonitorServiceTest {
         portionPort.recordPositivePortion(
                 pet.id,
                 account.id,
-                BitcoinTransactionFixture.AMOUNT_SATS,
+                portionSats,
                 PortionOrigin.CREATOR_PLAN,
                 now
         );

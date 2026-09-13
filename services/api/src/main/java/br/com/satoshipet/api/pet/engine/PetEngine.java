@@ -21,6 +21,7 @@ import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Comparator;
@@ -230,14 +231,14 @@ public class PetEngine implements PetLifecyclePort {
         evaluate(pet, effectiveAt);
         Optional<PetFeeding> existing = PetFeeding.findByPetAndReceipt(pet, receipt.id);
         if (existing.isEmpty()) {
-            BigDecimal duration = ReserveMath.hoursAdded(receipt.confirmedSats, portionSats);
-            creditDelta(pet, duration, effectiveAt);
+            BigDecimal theoretical = ReserveMath.hoursAdded(receipt.confirmedSats, portionSats);
+            BigDecimal applied = creditDelta(pet, theoretical, effectiveAt);
             PetFeeding.create(
                     pet,
                     receipt.id,
                     receipt.confirmedSats,
                     portionSats,
-                    duration,
+                    applied,
                     effectiveAt,
                     FeedingStatus.VALID,
                     FeedingOrigin.HISTORICAL_RECONSTRUCTION,
@@ -336,6 +337,9 @@ public class PetEngine implements PetLifecyclePort {
         }
         if (feeding.amountSats != amountSats) {
             reviseExisting(pet, feeding, portion, amountSats, when);
+            if (confirmed && feeding.status == FeedingStatus.PROVISIONAL) {
+                confirmExisting(pet, feeding, portion, amountSats, when);
+            }
             return;
         }
         if (confirmed && feeding.status == FeedingStatus.PROVISIONAL) {
@@ -357,15 +361,15 @@ public class PetEngine implements PetLifecyclePort {
     ) {
         evaluate(pet, when);
         FeedingStatus status = confirmed ? FeedingStatus.VALID : FeedingStatus.PROVISIONAL;
-        BigDecimal duration = durationFor(pet, status, amountSats, portion.portionSats());
-        creditDelta(pet, duration, when);
+        BigDecimal theoretical = durationFor(pet, status, amountSats, portion.portionSats());
+        BigDecimal applied = creditDelta(pet, theoretical, when);
         boolean presentable = isPresentable(pet, confirmed);
         PetFeeding feeding = PetFeeding.create(
                 pet,
                 logicalReceiptId,
                 amountSats,
                 portion.portionSats(),
-                duration,
+                applied,
                 when,
                 status,
                 FeedingOrigin.LIVE,
@@ -405,9 +409,10 @@ public class PetEngine implements PetLifecyclePort {
         feeding.status = FeedingStatus.VALID;
         feeding.presentable = true;
         feeding.portionSats = portion.portionSats();
-        feeding.durationHours = durationFor(pet, FeedingStatus.VALID, amountSats, portion.portionSats());
+        BigDecimal theoretical = durationFor(pet, FeedingStatus.VALID, amountSats, feeding.portionSats);
+        BigDecimal appliedDelta = creditDelta(pet, theoretical.subtract(oldCredited), when);
+        feeding.durationHours = oldCredited.add(appliedDelta);
         feeding.updatedAt = when;
-        creditDelta(pet, feeding.durationHours.subtract(oldCredited), when);
         maybeEmitRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
     }
 
@@ -428,10 +433,10 @@ public class PetEngine implements PetLifecyclePort {
         evaluate(pet, when);
         BigDecimal oldCredited = creditedHours(pet, feeding);
         feeding.amountSats = newAmountSats;
-        feeding.portionSats = portion.portionSats();
-        feeding.durationHours = durationFor(pet, feeding.status, newAmountSats, portion.portionSats());
+        BigDecimal theoretical = durationFor(pet, feeding.status, newAmountSats, feeding.portionSats);
+        BigDecimal appliedDelta = creditDelta(pet, theoretical.subtract(oldCredited), when);
+        feeding.durationHours = oldCredited.add(appliedDelta);
         feeding.updatedAt = when;
-        creditDelta(pet, feeding.durationHours.subtract(oldCredited), when);
         maybeEmitRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
     }
 
@@ -449,7 +454,7 @@ public class PetEngine implements PetLifecyclePort {
         if (EggPolicy.immediateEggOnLostBirthFoundation(
                 pet.bornAt != null,
                 hasOtherValidFeeding(pet, logicalReceiptId),
-                0L)) {
+                confirmedSatsExcluding(pet.address, logicalReceiptId))) {
             returnToEgg(pet, when);
         }
         if (feeding.origin == FeedingOrigin.LIVE && wasPresentable) {
@@ -475,7 +480,7 @@ public class PetEngine implements PetLifecyclePort {
         if (EggPolicy.immediateEggOnLostBirthFoundation(
                 pet.bornAt != null,
                 hasOtherValidFeeding(pet, feeding.logicalReceiptId),
-                0L)) {
+                confirmedSatsExcluding(pet.address, feeding.logicalReceiptId))) {
             returnToEgg(pet, when);
         }
         maybeEmitRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
@@ -510,6 +515,17 @@ public class PetEngine implements PetLifecyclePort {
         pet.updatedAt = when;
     }
 
+    private static long confirmedSatsExcluding(Address address, UUID logicalReceiptId) {
+        long confirmed = 0L;
+        for (LogicalReceipt receipt : LogicalReceipt.findByAddress(address)) {
+            if (receipt.id.equals(logicalReceiptId)) {
+                continue;
+            }
+            confirmed += receipt.confirmedSats;
+        }
+        return confirmed;
+    }
+
     private static boolean hasOtherValidFeeding(Pet pet, UUID logicalReceiptId) {
         return PetFeeding.count(
                 "pet = ?1 AND status = ?2 AND logicalReceiptId <> ?3",
@@ -529,11 +545,13 @@ public class PetEngine implements PetLifecyclePort {
         pet.updatedAt = now;
     }
 
-    private static void creditDelta(Pet pet, BigDecimal delta, Instant now) {
+    private static BigDecimal creditDelta(Pet pet, BigDecimal delta, Instant now) {
         if (delta.compareTo(BigDecimal.ZERO) == 0) {
-            return;
+            return ZERO_HOURS;
         }
+        BigDecimal before = pet.reserveHours;
         pet.reserveHours = ReserveMath.applyCap(pet.reserveHours, delta);
+        BigDecimal applied = pet.reserveHours.subtract(before).setScale(ReserveMath.SCALE, RoundingMode.DOWN);
         if (pet.reserveHours.compareTo(BigDecimal.ZERO) > 0) {
             pet.reserveDepletedAt = null;
         } else if (pet.reserveDepletedAt == null) {
@@ -541,6 +559,7 @@ public class PetEngine implements PetLifecyclePort {
         }
         pet.emotionalState = EmotionalStatePolicy.of(pet.reserveHours, pet.reserveDepletedAt, now);
         pet.updatedAt = now;
+        return applied;
     }
 
     private static BigDecimal durationFor(Pet pet, FeedingStatus status, long amountSats, long portionSats) {

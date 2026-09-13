@@ -229,6 +229,76 @@ class PetEngineTest {
 
     @Test
     @Transactional
+    void invalidarEstouroDoTetoNaoDesfazHorasJaCapadas() {
+        Fixture fixture = persistCreatureWithPortion("cap-168");
+        UUID receiptA = persistReceipt(fixture, 140_000L);
+        UUID receiptB = persistReceipt(fixture, PORTION_SATS);
+
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptA, 140_000L, true, NOW);
+        Pet afterA = Pet.findById(fixture.pet.id);
+        assertEquals(0, afterA.reserveHours.compareTo(hours("168")));
+        assertEquals(0, PetFeeding.findByPetAndReceipt(afterA, receiptA).orElseThrow()
+                .durationHours.compareTo(hours("168")));
+
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptB, PORTION_SATS, true, NOW);
+        Pet afterB = Pet.findById(fixture.pet.id);
+        assertEquals(0, afterB.reserveHours.compareTo(hours("168")));
+        assertEquals(0, PetFeeding.findByPetAndReceipt(afterB, receiptB).orElseThrow()
+                .durationHours.compareTo(hours("0")),
+                "excesso acima de 168h não entra na reserva nem em durationHours");
+
+        lifecycle.onReceiptInvalidated(fixture.pet.id, receiptB, NOW);
+
+        Pet pet = Pet.findById(fixture.pet.id);
+        assertEquals(0, pet.reserveHours.compareTo(hours("168")),
+                "invalidar o estouro não pode desfazer as horas já capadas (CA-016)");
+        assertEquals(FeedingStatus.INVALIDATED,
+                PetFeeding.findByPetAndReceipt(pet, receiptB).orElseThrow().status);
+    }
+
+    @Test
+    @Transactional
+    void revisaoNaoRebasaPorcaoSnapshotDaAlimentacao() {
+        Fixture fixture = persistCreatureWithPortion("rbf-portion");
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, false, NOW);
+
+        portionPort.recordPositivePortion(
+                fixture.pet.id,
+                fixture.account.id,
+                10_000L,
+                PortionOrigin.CREATOR_PLAN,
+                NOW.plusSeconds(1)
+        );
+
+        lifecycle.onReceiptRevised(fixture.pet.id, receiptId, 10_000L, NOW.plusSeconds(2));
+
+        Pet pet = Pet.findById(fixture.pet.id);
+        PetFeeding feeding = singleFeeding(pet);
+        assertEquals(PORTION_SATS, feeding.portionSats);
+        assertEquals(0, feeding.durationHours.compareTo(TWELVE_HOURS),
+                "RBF recalcula com a porção snapshot, não com a vigente");
+        assertTrue(pet.reserveHours.compareTo(hours("24")) < 0,
+                "reserva não pode ser 24h da porção vigente");
+    }
+
+    @Test
+    @Transactional
+    void observacaoConfirmadaComValorNovoPromoveProvisional() {
+        Fixture fixture = persistCreatureWithPortion("revise-confirm");
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, false, NOW);
+
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, 10_000L, true, NOW);
+
+        PetFeeding feeding = singleFeeding(Pet.findById(fixture.pet.id));
+        assertEquals(FeedingStatus.VALID, feeding.status);
+        assertEquals(10_000L, feeding.amountSats);
+        assertEquals(0, feeding.durationHours.compareTo(TWELVE_HOURS));
+    }
+
+    @Test
+    @Transactional
     void invalidarAlimentacaoCreditadaReduzReservaEMarcaInvalidada() {
         Fixture fixture = persistCreatureWithPortion("invalidate");
         UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
