@@ -32,7 +32,7 @@ Estabelecer monorepo, pipeline, persistência, base do **PWA Angular instalável
 **Regras de negócio:** §16.2, §16.4  
 **Critérios de aceite:** CA-070 (base para restore)  
 **Dependências:** FUND-01  
-**Notas técnicas:** NUMERIC para valores monetários (CC-10). PostgreSQL executa em container (decisão §1.3 de `00-definicao-tecnica.md`) — serviço no `docker-compose.yml` com volume persistente.
+**Notas técnicas:** NUMERIC para valores monetários (CC-10). PostgreSQL executa em container (decisão §1.3 de `00-definicao-tecnica.md`) — serviço no `docker-compose.yml` com volume persistente. O Flyway aplica `db/migration` no startup, valida o histórico, não cria baseline em banco vazio e não executa limpeza automática; o perfil de teste valida esse fluxo desde schema H2 vazio.
 
 ---
 
