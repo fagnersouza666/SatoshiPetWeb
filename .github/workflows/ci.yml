@@ -70,6 +70,9 @@ jobs:
       POSTGRES_PORT: "5432"
       POSTGRES_DB: satoshi_pet
       POSTGRES_USER: satoshi
+      # O serviço usa trust; a API recebe a variável explicitamente sem
+      # manter qualquer senha literal na configuração versionada.
+      POSTGRES_PASSWORD: ""
     steps:
       - name: Checkout
         uses: actions/checkout@v4
