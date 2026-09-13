@@ -14,7 +14,6 @@ import org.jboss.logging.Logger;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Canal WebSocket para acompanhamento de um endereço Bitcoin em tempo real.
@@ -61,12 +60,9 @@ public class AddressWebSocket {
         String cursor = cursorService.currentCursor(canonical);
 
         // Snapshot mínimo — estado HIBERNANDO enquanto PetLifecycle não está implementado.
-        Map<String, Object> stateData = Map.of(
-                "address", canonical,
-                "state", "HIBERNANDO"
-        );
+        AddressSnapshot stateData = AddressSnapshot.initial(canonical, "HIBERNANDO");
 
-        return serializeOrNull(WebSocketMessage.snapshot(cursor, stateData));
+        return serializeOrNull(new WebSocketSnapshot<>(WebSocketCursor.of(cursor), stateData));
     }
 
     /**
@@ -76,7 +72,7 @@ public class AddressWebSocket {
     @OnTextMessage
     public String onMessage(WebSocketConnection connection, String rawMessage) {
         try {
-            WebSocketMessage msg = objectMapper.readValue(rawMessage, WebSocketMessage.class);
+            WebSocketClientMessage msg = objectMapper.readValue(rawMessage, WebSocketClientMessage.class);
 
             return switch (msg.type()) {
                 case "PONG" -> {
@@ -84,7 +80,7 @@ public class AddressWebSocket {
                     yield null; // sem resposta ao PONG
                 }
                 case "RECONNECT" -> {
-                    String requestedCursor = msg.cursor() != null ? msg.cursor() : "0";
+                    String requestedCursor = msg.cursor() != null ? msg.cursor().value() : "0";
                     LOG.debugf("Reconexão com cursor=%s para %s", requestedCursor, connection.id());
                     String canonical = connection.pathParam("canonical");
 
@@ -94,19 +90,18 @@ public class AddressWebSocket {
 
                     if (missed.isEmpty()) {
                         // Nenhum evento perdido — confirma o cursor solicitado pelo cliente
-                        Map<String, Object> stateData = Map.of(
-                                "address", canonical,
-                                "state", "HIBERNANDO",
-                                "resumedFrom", requestedCursor
-                        );
-                        yield serializeOrNull(WebSocketMessage.snapshot(requestedCursor, stateData));
+                        AddressSnapshot stateData = AddressSnapshot.resumed(
+                                canonical, "HIBERNANDO", requestedCursor);
+                        yield serializeOrNull(new WebSocketSnapshot<>(
+                                WebSocketCursor.of(requestedCursor), stateData));
                     }
 
                     // Envia cada evento perdido como EVENT; retorna apenas o primeiro via yield
                     // (os demais são enviados assincronamente)
                     List<String> serialized = new ArrayList<>();
                     for (RealtimeEventCursorService.StoredEvent event : missed) {
-                        String s = serializeOrNull(WebSocketMessage.event(event.cursor(), event.data()));
+                        String s = serializeOrNull(WebSocketEvent.from(
+                                event.cursor(), event.data(), objectMapper));
                         if (s != null) {
                             serialized.add(s);
                         }
@@ -155,7 +150,7 @@ public class AddressWebSocket {
      * @param data      dados do evento a transmitir
      */
     public void broadcast(String canonical, String cursor, Object data) {
-        String message = serializeOrNull(WebSocketMessage.event(cursor, data));
+        String message = serializeOrNull(WebSocketEvent.from(cursor, data, objectMapper));
         if (message == null) return;
 
         openConnections.stream()

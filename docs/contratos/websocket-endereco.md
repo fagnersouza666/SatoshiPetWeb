@@ -33,6 +33,13 @@ Envelope JSON comum:
 O cursor é string monotônica por canal, atribuída por
 `RealtimeEventCursorService`.
 
+No backend, o envelope é dividido em DTOs explícitos: `WebSocketSnapshot`
+(cursor + estado inicial), `WebSocketEvent` (cursor + payload JSON já redigido)
+e `WebSocketPing` (somente `type`). O cursor é representado por
+`WebSocketCursor`, mas continua serializado como string. Mensagens recebidas
+usam `WebSocketClientMessage`; um cursor ausente em `RECONNECT` equivale a
+`"0"`.
+
 ### Snapshot inicial (FUND)
 
 Enquanto o motor do pet não estiver implementado, o snapshot inclui:

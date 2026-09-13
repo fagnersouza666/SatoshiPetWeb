@@ -33,7 +33,7 @@ public class WebSocketHeartbeatService {
     public void heartbeat() {
         String ping;
         try {
-            ping = objectMapper.writeValueAsString(WebSocketMessage.ping());
+            ping = objectMapper.writeValueAsString(new WebSocketPing());
         } catch (JsonProcessingException e) {
             LOG.errorf(e, "Falha ao serializar PING");
             return;
