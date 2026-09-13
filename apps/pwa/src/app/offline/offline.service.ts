@@ -10,7 +10,9 @@ import { Injectable, OnDestroy, signal } from '@angular/core';
 @Injectable({ providedIn: 'root' })
 export class OfflineService implements OnDestroy {
   /** `true` quando o dispositivo está sem conexão. */
-  readonly isOffline = signal<boolean>(typeof navigator !== 'undefined' ? !navigator.onLine : false);
+  readonly isOffline = signal<boolean>(
+    typeof navigator !== 'undefined' ? !navigator.onLine : false,
+  );
 
   private readonly handleOnline = (): void => this.isOffline.set(false);
   private readonly handleOffline = (): void => this.isOffline.set(true);

@@ -1,10 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  OnInit,
-  inject,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../../../core/auth.service';
 
@@ -53,85 +47,98 @@ import { AuthService } from '../../../core/auth.service';
       }
     </section>
   `,
-  styles: [`
-    .page {
-      padding: var(--space-8) 0;
-      max-width: 26rem;
-    }
-
-    .page__title {
-      font-size: 1.5rem;
-      font-weight: 700;
-      margin: 0 0 var(--space-6);
-      color: var(--color-text);
-    }
-
-    .status {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      color: var(--color-text-muted);
-      font-size: 0.9375rem;
-      padding: var(--space-4);
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-    }
-
-    .spinner {
-      display: inline-block;
-      width: 1.25rem;
-      height: 1.25rem;
-      border: 2px solid var(--color-border);
-      border-top-color: var(--color-primary);
-      border-radius: 50%;
-      flex-shrink: 0;
-      animation: spin 0.7s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-
-    .alert {
-      padding: var(--space-4);
-      border-radius: var(--radius-md);
-      font-size: 0.9375rem;
-      margin-bottom: var(--space-4);
-
-      strong { display: block; margin-bottom: var(--space-1); }
-      p { margin: 0; }
-
-      a {
-        color: var(--color-primary);
-        &:hover { text-decoration: underline; }
+  styles: [
+    `
+      .page {
+        padding: var(--space-8) 0;
+        max-width: 26rem;
       }
 
-      &--error {
-        background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-        color: var(--color-danger);
-        border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+      .page__title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0 0 var(--space-6);
+        color: var(--color-text);
       }
-    }
 
-    .page__links {
-      display: flex;
-      gap: var(--space-2);
-      font-size: 0.875rem;
-      color: var(--color-text-muted);
+      .status {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        color: var(--color-text-muted);
+        font-size: 0.9375rem;
+        padding: var(--space-4);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
+      }
 
-      a {
-        color: var(--color-primary);
-        text-decoration: none;
-        &:hover { text-decoration: underline; }
-        &:focus-visible {
-          outline: 2px solid var(--color-primary);
-          outline-offset: 2px;
-          border-radius: 2px;
+      .spinner {
+        display: inline-block;
+        width: 1.25rem;
+        height: 1.25rem;
+        border: 2px solid var(--color-border);
+        border-top-color: var(--color-primary);
+        border-radius: 50%;
+        flex-shrink: 0;
+        animation: spin 0.7s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
         }
       }
-    }
-  `],
+
+      .alert {
+        padding: var(--space-4);
+        border-radius: var(--radius-md);
+        font-size: 0.9375rem;
+        margin-bottom: var(--space-4);
+
+        strong {
+          display: block;
+          margin-bottom: var(--space-1);
+        }
+        p {
+          margin: 0;
+        }
+
+        a {
+          color: var(--color-primary);
+          &:hover {
+            text-decoration: underline;
+          }
+        }
+
+        &--error {
+          background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+          color: var(--color-danger);
+          border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+        }
+      }
+
+      .page__links {
+        display: flex;
+        gap: var(--space-2);
+        font-size: 0.875rem;
+        color: var(--color-text-muted);
+
+        a {
+          color: var(--color-primary);
+          text-decoration: none;
+          &:hover {
+            text-decoration: underline;
+          }
+          &:focus-visible {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+            border-radius: 2px;
+          }
+        }
+      }
+    `,
+  ],
 })
 export class VerificarComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);

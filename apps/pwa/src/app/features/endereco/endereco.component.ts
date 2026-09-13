@@ -1,10 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  OnInit,
-  inject,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { ApiClientService } from '../../core/api-client.service';
 import { PublicAddressInfo } from '../../core/models/account.model';
@@ -82,130 +76,136 @@ const PET_STATE_LABELS: Record<NonNullable<PublicAddressInfo['petState']>, strin
       }
     </section>
   `,
-  styles: [`
-    .page {
-      padding: var(--space-8) 0;
-      max-width: 32rem;
-    }
-
-    .page__title {
-      font-size: 1.5rem;
-      font-weight: 700;
-      margin: 0 0 var(--space-6);
-      color: var(--color-text);
-    }
-
-    .page__empty {
-      color: var(--color-text-muted);
-    }
-
-    .status {
-      display: flex;
-      align-items: center;
-      gap: var(--space-3);
-      color: var(--color-text-muted);
-      font-size: 0.9375rem;
-      padding: var(--space-4);
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-md);
-    }
-
-    .spinner {
-      display: inline-block;
-      width: 1.25rem;
-      height: 1.25rem;
-      border: 2px solid var(--color-border);
-      border-top-color: var(--color-primary);
-      border-radius: 50%;
-      flex-shrink: 0;
-      animation: spin 0.7s linear infinite;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .alert {
-      padding: var(--space-3) var(--space-4);
-      border-radius: var(--radius-md);
-      font-size: 0.9375rem;
-
-      &--error {
-        background: color-mix(in srgb, var(--color-danger) 10%, transparent);
-        color: var(--color-danger);
-        border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+  styles: [
+    `
+      .page {
+        padding: var(--space-8) 0;
+        max-width: 32rem;
       }
-    }
 
-    .address-card {
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-lg);
-      padding: var(--space-4) var(--space-6);
-    }
+      .page__title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin: 0 0 var(--space-6);
+        color: var(--color-text);
+      }
 
-    .address-block {
-      display: flex;
-      flex-direction: column;
-      gap: var(--space-1);
-      margin-bottom: var(--space-4);
-      padding-bottom: var(--space-4);
-      border-bottom: 1px solid var(--color-border);
-    }
-
-    .address-label {
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--color-text-muted);
-    }
-
-    .address-value {
-      font-family: var(--font-mono);
-      font-size: 0.8125rem;
-      background: color-mix(in srgb, var(--color-border) 30%, transparent);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius-sm);
-      padding: var(--space-2) var(--space-3);
-      word-break: break-all;
-      margin: 0;
-      color: var(--color-text);
-    }
-
-    .pet-block {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: var(--space-2);
-    }
-
-    .pet-name {
-      font-size: 1.125rem;
-      font-weight: 700;
-      color: var(--color-text);
-    }
-
-    .pet-state {
-      font-size: 0.875rem;
-      font-weight: 500;
-      padding: var(--space-1) var(--space-3);
-      border-radius: 9999px;
-      background: color-mix(in srgb, var(--color-primary) 15%, transparent);
-      color: var(--color-primary-dark);
-
-      &--hibernando {
-        background: color-mix(in srgb, var(--color-text-muted) 15%, transparent);
+      .page__empty {
         color: var(--color-text-muted);
       }
 
-      &--critico,
-      &--faminto {
-        background: color-mix(in srgb, var(--color-danger) 15%, transparent);
-        color: var(--color-danger);
+      .status {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        color: var(--color-text-muted);
+        font-size: 0.9375rem;
+        padding: var(--space-4);
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-md);
       }
-    }
-  `],
+
+      .spinner {
+        display: inline-block;
+        width: 1.25rem;
+        height: 1.25rem;
+        border: 2px solid var(--color-border);
+        border-top-color: var(--color-primary);
+        border-radius: 50%;
+        flex-shrink: 0;
+        animation: spin 0.7s linear infinite;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .alert {
+        padding: var(--space-3) var(--space-4);
+        border-radius: var(--radius-md);
+        font-size: 0.9375rem;
+
+        &--error {
+          background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+          color: var(--color-danger);
+          border: 1px solid color-mix(in srgb, var(--color-danger) 30%, transparent);
+        }
+      }
+
+      .address-card {
+        background: var(--color-surface);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-4) var(--space-6);
+      }
+
+      .address-block {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+        margin-bottom: var(--space-4);
+        padding-bottom: var(--space-4);
+        border-bottom: 1px solid var(--color-border);
+      }
+
+      .address-label {
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--color-text-muted);
+      }
+
+      .address-value {
+        font-family: var(--font-mono);
+        font-size: 0.8125rem;
+        background: color-mix(in srgb, var(--color-border) 30%, transparent);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-sm);
+        padding: var(--space-2) var(--space-3);
+        word-break: break-all;
+        margin: 0;
+        color: var(--color-text);
+      }
+
+      .pet-block {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+      }
+
+      .pet-name {
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: var(--color-text);
+      }
+
+      .pet-state {
+        font-size: 0.875rem;
+        font-weight: 500;
+        padding: var(--space-1) var(--space-3);
+        border-radius: 9999px;
+        background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+        color: var(--color-primary-dark);
+
+        &--hibernando {
+          background: color-mix(in srgb, var(--color-text-muted) 15%, transparent);
+          color: var(--color-text-muted);
+        }
+
+        &--critico,
+        &--faminto {
+          background: color-mix(in srgb, var(--color-danger) 15%, transparent);
+          color: var(--color-danger);
+        }
+      }
+    `,
+  ],
 })
 export class EnderecoComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);

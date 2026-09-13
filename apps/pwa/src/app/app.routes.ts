@@ -17,9 +17,7 @@ export const routes: Routes = [
           {
             path: '',
             loadComponent: () =>
-              import('./features/auth/entrar/entrar.component').then(
-                (m) => m.EntrarComponent,
-              ),
+              import('./features/auth/entrar/entrar.component').then((m) => m.EntrarComponent),
           },
           {
             path: 'verificar',
@@ -33,16 +31,12 @@ export const routes: Routes = [
       {
         path: 'cadastro',
         loadComponent: () =>
-          import('./features/auth/cadastro/cadastro.component').then(
-            (m) => m.CadastroComponent,
-          ),
+          import('./features/auth/cadastro/cadastro.component').then((m) => m.CadastroComponent),
       },
       {
         path: 'recuperar',
         loadComponent: () =>
-          import('./features/auth/recuperar/recuperar.component').then(
-            (m) => m.RecuperarComponent,
-          ),
+          import('./features/auth/recuperar/recuperar.component').then((m) => m.RecuperarComponent),
       },
 
       // ─── Conta autenticada (épico CONTA) — protegida por authGuard ───
@@ -50,18 +44,14 @@ export const routes: Routes = [
         path: 'conta',
         canActivate: [authGuard],
         loadComponent: () =>
-          import('./features/conta/conta.component').then(
-            (m) => m.ContaComponent,
-          ),
+          import('./features/conta/conta.component').then((m) => m.ContaComponent),
       },
 
       // ─── Endereço público (épico BTC) ────────────────────────────
       {
         path: 'endereco/:address',
         loadComponent: () =>
-          import('./features/endereco/endereco.component').then(
-            (m) => m.EnderecoComponent,
-          ),
+          import('./features/endereco/endereco.component').then((m) => m.EnderecoComponent),
       },
 
       // URLs desconhecidas retornam ao fluxo público de acesso.
