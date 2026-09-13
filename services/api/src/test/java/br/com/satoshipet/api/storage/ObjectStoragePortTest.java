@@ -93,6 +93,32 @@ class ObjectStoragePortTest {
     }
 
     @Test
+    void mantemAssetsDeDuasCriaturasIndependentes() throws IOException {
+        String firstKey = "test/isolation/criatura-a/sprite.png";
+        String secondKey = "test/isolation/criatura-b/sprite.png";
+        byte[] first = "sprite-a".getBytes(StandardCharsets.UTF_8);
+        byte[] second = "sprite-b".getBytes(StandardCharsets.UTF_8);
+
+        storage.put(firstKey, first, "image/png");
+        storage.put(secondKey, second, "image/png");
+
+        try (InputStream result = storage.get(firstKey)) {
+            assertArrayEquals(first, result.readAllBytes());
+        }
+        try (InputStream result = storage.get(secondKey)) {
+            assertArrayEquals(second, result.readAllBytes());
+        }
+
+        storage.delete(firstKey);
+
+        assertFalse(storage.exists(firstKey));
+        assertTrue(storage.exists(secondKey));
+        try (InputStream result = storage.get(secondKey)) {
+            assertArrayEquals(second, result.readAllBytes());
+        }
+    }
+
+    @Test
     void armazenaMuitasChavesIndependentes() {
         for (int i = 0; i < 10; i++) {
             String key = "test/multi-" + i + ".bin";
