@@ -1,6 +1,7 @@
 package br.com.satoshipet.api.btc;
 
 import br.com.satoshipet.api.account.Address;
+import br.com.satoshipet.api.events.DomainEventType;
 import br.com.satoshipet.api.outbox.OutboxService;
 import br.com.satoshipet.api.pet.Pet;
 import br.com.satoshipet.api.pet.PetLifecyclePort;
@@ -353,17 +354,18 @@ public class BitcoinMonitorService {
                     "block", buildBlockMap(tx)
             );
 
-            String json = redactor.redact("BITCOIN_TRANSACTION_OBSERVED", payload, null, null);
+            String json = redactor.redact(DomainEventType.BITCOIN_TRANSACTION_OBSERVED.value(), payload, null, null);
             outboxService.save(
                     UUID.randomUUID(),
                     BitcoinEventRedactor.AGGREGATE_TYPE,
                     address.canonical,
-                    "BITCOIN_TRANSACTION_OBSERVED",
+                    DomainEventType.BITCOIN_TRANSACTION_OBSERVED,
                     json,
                     null
             );
         } catch (Exception e) {
             LOG.errorf(e, "Falha ao emitir BITCOIN_TRANSACTION_OBSERVED para txid=%s", tx.txid);
+            throw new IllegalStateException("Falha ao gravar evento BITCOIN_TRANSACTION_OBSERVED", e);
         }
     }
 
@@ -391,17 +393,18 @@ public class BitcoinMonitorService {
                     "block", buildBlockMap(tx)
             );
 
-            String json = redactor.redact("BITCOIN_TRANSACTION_CONFIRMED", payload, null, null);
+            String json = redactor.redact(DomainEventType.BITCOIN_TRANSACTION_CONFIRMED.value(), payload, null, null);
             outboxService.save(
                     UUID.randomUUID(),
                     BitcoinEventRedactor.AGGREGATE_TYPE,
                     address.canonical,
-                    "BITCOIN_TRANSACTION_CONFIRMED",
+                    DomainEventType.BITCOIN_TRANSACTION_CONFIRMED,
                     json,
                     null
             );
         } catch (Exception e) {
             LOG.errorf(e, "Falha ao emitir BITCOIN_TRANSACTION_CONFIRMED para txid=%s", tx.txid);
+            throw new IllegalStateException("Falha ao gravar evento BITCOIN_TRANSACTION_CONFIRMED", e);
         }
     }
 
@@ -424,17 +427,18 @@ public class BitcoinMonitorService {
             payload.put("replacedReceivedSats", tx.amountSats);
             payload.put("replacementReceivedSats", replacementInfo.amountSats());
 
-            String json = redactor.redact("BITCOIN_TRANSACTION_REPLACED", payload, null, null);
+            String json = redactor.redact(DomainEventType.BITCOIN_TRANSACTION_REPLACED.value(), payload, null, null);
             outboxService.save(
                     UUID.randomUUID(),
                     BitcoinEventRedactor.AGGREGATE_TYPE,
                     address.canonical,
-                    "BITCOIN_TRANSACTION_REPLACED",
+                    DomainEventType.BITCOIN_TRANSACTION_REPLACED,
                     json,
                     null
             );
         } catch (Exception e) {
             LOG.errorf(e, "Falha ao emitir BITCOIN_TRANSACTION_REPLACED para txid=%s", tx.txid);
+            throw new IllegalStateException("Falha ao gravar evento BITCOIN_TRANSACTION_REPLACED", e);
         }
     }
 
@@ -463,17 +467,18 @@ public class BitcoinMonitorService {
                     "invalidatedReceivedSats", tx.amountSats
             );
 
-            String json = redactor.redact("BITCOIN_TRANSACTION_DROPPED", payload, null, null);
+            String json = redactor.redact(DomainEventType.BITCOIN_TRANSACTION_DROPPED.value(), payload, null, null);
             outboxService.save(
                     UUID.randomUUID(),
                     BitcoinEventRedactor.AGGREGATE_TYPE,
                     address.canonical,
-                    "BITCOIN_TRANSACTION_DROPPED",
+                    DomainEventType.BITCOIN_TRANSACTION_DROPPED,
                     json,
                     null
             );
         } catch (Exception e) {
             LOG.errorf(e, "Falha ao emitir BITCOIN_TRANSACTION_DROPPED para txid=%s", tx.txid);
+            throw new IllegalStateException("Falha ao gravar evento BITCOIN_TRANSACTION_DROPPED", e);
         }
     }
 
@@ -499,17 +504,18 @@ public class BitcoinMonitorService {
             payload.put("previousConfirmedBalanceSats", tx.amountSats);
             payload.put("currentConfirmedBalanceSats", 0L);
 
-            String json = redactor.redact("BITCOIN_CHAIN_REORG", payload, null, null);
+            String json = redactor.redact(DomainEventType.BITCOIN_CHAIN_REORG.value(), payload, null, null);
             outboxService.save(
                     UUID.randomUUID(),
                     BitcoinEventRedactor.AGGREGATE_TYPE,
                     address.canonical,
-                    "BITCOIN_CHAIN_REORG",
+                    DomainEventType.BITCOIN_CHAIN_REORG,
                     json,
                     null
             );
         } catch (Exception e) {
             LOG.errorf(e, "Falha ao emitir BITCOIN_CHAIN_REORG para txid=%s", tx.txid);
+            throw new IllegalStateException("Falha ao gravar evento BITCOIN_CHAIN_REORG", e);
         }
     }
 
@@ -531,17 +537,18 @@ public class BitcoinMonitorService {
                     "reconciliationTip", Map.of("hash", "", "height", 0)
             );
 
-            String json = redactor.redact("BITCOIN_BALANCE_RECONCILED", payload, null, null);
+            String json = redactor.redact(DomainEventType.BITCOIN_BALANCE_RECONCILED.value(), payload, null, null);
             outboxService.save(
                     UUID.randomUUID(),
                     BitcoinEventRedactor.AGGREGATE_TYPE,
                     address.canonical,
-                    "BITCOIN_BALANCE_RECONCILED",
+                    DomainEventType.BITCOIN_BALANCE_RECONCILED,
                     json,
                     null
             );
         } catch (Exception e) {
             LOG.errorf(e, "Falha ao emitir BITCOIN_BALANCE_RECONCILED para endereço=%s", address.canonical);
+            throw new IllegalStateException("Falha ao gravar evento BITCOIN_BALANCE_RECONCILED", e);
         }
     }
 

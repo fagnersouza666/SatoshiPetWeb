@@ -1,16 +1,21 @@
 package br.com.satoshipet.api.outbox;
 
 import br.com.satoshipet.api.events.DomainEventType;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
+import jakarta.transaction.TransactionalException;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @QuarkusTest
 class OutboxServiceTest {
@@ -60,6 +65,74 @@ class OutboxServiceTest {
 
         assertNotNull(saved);
         assertEquals("BITCOIN_BALANCE_RECONCILED", saved.eventType);
+    }
+
+    @Test
+    void persisteEventoConstruidoPeloContextoNaTransacaoAtual() {
+        UUID id = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-09-13T14:00:00Z");
+        OutboxEvent event = OutboxEvent.createWithId(
+                id,
+                "Address",
+                "address-" + id,
+                DomainEventType.BITCOIN_TRANSACTION_OBSERVED,
+                "{\"address\":\"bcrt1qexample\"}",
+                createdAt,
+                id.toString()
+        );
+
+        QuarkusTransaction.requiringNew().run(() -> outboxService.save(event));
+
+        OutboxEvent saved = QuarkusTransaction.requiringNew().call(() -> OutboxEvent.findById(id));
+        assertNotNull(saved);
+        assertEquals(createdAt, saved.createdAt);
+        assertEquals(id.toString(), saved.correlationId);
+        assertEquals("BITCOIN_TRANSACTION_OBSERVED", saved.eventType);
+    }
+
+    @Test
+    void chamadaForaDeTransacaoEhRejeitada() {
+        UUID id = UUID.randomUUID();
+
+        assertThrows(TransactionalException.class, () -> outboxService.save(
+                id,
+                "Address",
+                "address-" + id,
+                DomainEventType.BITCOIN_TRANSACTION_OBSERVED,
+                "{}",
+                null
+        ));
+
+        OutboxEvent saved = QuarkusTransaction.requiringNew().call(() -> OutboxEvent.findById(id));
+        assertNull(saved);
+    }
+
+    @Test
+    void estadoDoAgregadoEEventoSaoDesfeitosJuntosEmFalha() {
+        UUID addressId = UUID.randomUUID();
+        UUID eventId = UUID.randomUUID();
+        String canonical = "bcrt1qrollback" + addressId.toString().replace("-", "").substring(0, 20);
+
+        assertThrows(IllegalStateException.class, () -> QuarkusTransaction.requiringNew().run(() -> {
+            br.com.satoshipet.api.account.Address address =
+                    br.com.satoshipet.api.account.Address.create(canonical, Instant.now());
+            address.id = addressId;
+            address.persist();
+            outboxService.save(
+                    eventId,
+                    "Address",
+                    canonical,
+                    DomainEventType.BITCOIN_TRANSACTION_OBSERVED,
+                    "{}",
+                    null
+            );
+            throw new IllegalStateException("falha simulada após gravação do agregado e outbox");
+        }));
+
+        QuarkusTransaction.requiringNew().run(() -> {
+            assertNull(br.com.satoshipet.api.account.Address.findByCanonical(canonical).orElse(null));
+            assertNull(OutboxEvent.findById(eventId));
+        });
     }
 
     @Test
