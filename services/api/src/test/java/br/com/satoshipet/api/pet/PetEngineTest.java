@@ -117,6 +117,35 @@ class PetEngineTest {
 
     @Test
     @Transactional
+    void confirmacaoDaCriaturaNaoRecalculaHorasQuandoPorcaoDeReferenciaMuda() {
+        Fixture fixture = persistCreatureWithPortion("ca028-portion");
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, false, NOW);
+        assertEquals(0, ((Pet) Pet.findById(fixture.pet.id)).reserveHours.compareTo(SIX_HOURS));
+
+        portionPort.recordPositivePortion(
+                fixture.pet.id,
+                fixture.account.id,
+                10_000L,
+                PortionOrigin.CREATOR_PLAN,
+                NOW.plusSeconds(1)
+        );
+
+        lifecycle.onReceiptConfirmed(fixture.pet.id, receiptId, FIVE_THOUSAND, NOW.plusSeconds(2));
+
+        Pet pet = Pet.findById(fixture.pet.id);
+        PetFeeding feeding = singleFeeding(pet);
+        assertEquals(FeedingStatus.VALID, feeding.status);
+        assertEquals(PORTION_SATS, feeding.portionSats);
+        assertEquals(FIVE_THOUSAND, feeding.amountSats);
+        assertEquals(0, feeding.durationHours.compareTo(SIX_HOURS));
+        assertEquals(0, pet.reserveHours.compareTo(SIX_HOURS),
+                "confirmação da criatura não pode recalcular com a nova porção");
+    }
+
+    @Test
+    @Transactional
     void ovoPendenteNaoCreditaHorasEConfirmacaoAdicionaSeisHorasValidas() {
         Fixture fixture = persistPet("egg-cc14", PetPresentation.EGG, true);
         UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);

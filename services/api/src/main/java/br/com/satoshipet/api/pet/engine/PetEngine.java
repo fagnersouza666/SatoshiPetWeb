@@ -205,6 +205,12 @@ public class PetEngine implements PetLifecyclePort {
         if (feeding.status == FeedingStatus.VALID || feeding.status == FeedingStatus.INVALIDATED) {
             return;
         }
+        if (pet.presentation == PetPresentation.CREATURE) {
+            feeding.status = FeedingStatus.VALID;
+            feeding.presentable = true;
+            feeding.updatedAt = when;
+            return;
+        }
         evaluate(pet, when);
         BigDecimal oldCredited = creditedHours(pet, feeding);
         feeding.amountSats = amountSats;

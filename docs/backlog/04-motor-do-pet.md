@@ -157,7 +157,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** **CC-14**  
 **Critérios de aceite:** CA-028  
 **Dependências:** BTC-06, PET-07  
-**Notas técnicas:** `PetEngine` (CC-14 lite): ovo + pendente → `PROVISIONAL` com `durationHours=0` e `presentable=false`; confirmação credita horas e marca `VALID` (apresentação permanece EGG até EggPolicy). Criatura + pendente credita já em `PROVISIONAL`; confirmação só promove a `VALID`.
+**Notas técnicas:** `PetEngine` (CC-14 lite): ovo + pendente → `PROVISIONAL` com `durationHours=0` e `presentable=false`; confirmação credita horas e marca `VALID` (apresentação permanece EGG até EggPolicy). Criatura + pendente credita já em `PROVISIONAL`; confirmação só promove a `VALID` — não recalcula `amount`/`portion`/`duration` nem aplica `creditDelta` (CA-028), mesmo se a porção de referência mudar entre mempool e confirmação.
 
 ---
 
