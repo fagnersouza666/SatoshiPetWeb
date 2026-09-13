@@ -54,7 +54,10 @@ Estabelecer monorepo, pipeline, persistência, base do **PWA Angular instalável
 **Regras de negócio:** §16.3, §16.4  
 **Critérios de aceite:** CA-033 (base idempotência)  
 **Dependências:** FUND-02  
-**Notas técnicas:** Mesmos nomes de evento em REST, WS e logs.
+**Notas técnicas:** Mesmos nomes de evento em REST, WS e logs. O catálogo
+canônico está em [eventos-fundacao.md](../contratos/eventos-fundacao.md) e é
+exposto pelo backend como `DomainEventType`; payloads específicos permanecem
+nos contratos dos contextos responsáveis.
 
 ---
 
