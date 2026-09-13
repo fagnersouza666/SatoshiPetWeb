@@ -185,7 +185,9 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Notas técnicas:** `PetEngine` grava `PET_*` na outbox na mesma TX
 (`aggregateType=Pet`, payload público CA-009). `PET_REAPPEARED` exige
 `EGG`→`CREATURE`. A virada `awaitingReference` true→false emite
-`PET_STATE_CHANGED` quando não coberta por BORN/EGG/REAPPEARED. Contrato:
+`PET_STATE_CHANGED` quando não coberta por BORN/EGG/REAPPEARED. `OutboxWebSocketConsumer`
+publica `PET_*` só no canal de endereço; não chama `AccountWebSocket.send`
+(canal sem sessão). Contrato:
 [`docs/contratos/eventos-pet.md`](../contratos/eventos-pet.md). `PET_ARTWORK_READY` fica no épico ART.  
 
 ---

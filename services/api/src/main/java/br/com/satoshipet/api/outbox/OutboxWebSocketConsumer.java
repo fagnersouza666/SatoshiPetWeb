@@ -1,7 +1,5 @@
 package br.com.satoshipet.api.outbox;
 
-import br.com.satoshipet.api.account.AccountAddressBinding;
-import br.com.satoshipet.api.account.Address;
 import br.com.satoshipet.api.realtime.AccountWebSocket;
 import br.com.satoshipet.api.realtime.AddressWebSocket;
 import br.com.satoshipet.api.realtime.RealtimeEventCursorService;
@@ -10,8 +8,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.jboss.logging.Logger;
 
-import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Consumidor do outbox transacional que transmite eventos de endereço
@@ -21,7 +19,9 @@ import java.util.Map;
  * ou {@code TEST_} (prefixo {@code TEST_} reservado para testes automatizados).</p>
  *
  * <p>O {@code aggregate_id} é tratado como o endereço canônico quando
- * {@code aggregate_type} for "Address".</p>
+ * {@code PET_*} segue só no canal público de endereço; a fila autenticada
+ * permanece em {@code GET /api/v1/account/pet/presentation-queue} até o
+ * WebSocket de conta exigir sessão.
  */
 @ApplicationScoped
 public class OutboxWebSocketConsumer implements OutboxConsumer {
@@ -40,7 +40,7 @@ public class OutboxWebSocketConsumer implements OutboxConsumer {
             ObjectMapper objectMapper
     ) {
         this.addressWebSocket = addressWebSocket;
-        this.accountWebSocket = accountWebSocket;
+        this.accountWebSocket = Objects.requireNonNull(accountWebSocket, "accountWebSocket");
         this.cursorService = cursorService;
         this.objectMapper = objectMapper;
     }
@@ -78,14 +78,7 @@ public class OutboxWebSocketConsumer implements OutboxConsumer {
         LOG.debugf("Transmitindo event id=%s type=%s address=%s cursor=%s",
                 event.id, event.eventType, canonical, cursor);
 
-        List<AccountAddressBinding> accountBindings = lookupPetAccountBindings(event.eventType, canonical);
         addressWebSocket.broadcast(canonical, cursor, payload);
-        for (AccountAddressBinding binding : accountBindings) {
-            if (binding.account == null || binding.account.id == null) {
-                continue;
-            }
-            accountWebSocket.send(binding.account.id.toString(), cursor, payload);
-        }
     }
 
     /**
@@ -122,19 +115,5 @@ public class OutboxWebSocketConsumer implements OutboxConsumer {
             LOG.warnf("Falha ao parsear payload do evento id=%s — transmitindo string bruta", event.id);
             return event.payload;
         }
-    }
-
-    /**
-     * Resolve vínculos ativos para fan-out de {@code PET_*}. Lookup antes do
-     * broadcast: falha de persistência propaga e a outbox retenta.
-     * Endereço ausente → lista vazia (canal de endereço ainda transmite).
-     */
-    private static List<AccountAddressBinding> lookupPetAccountBindings(String eventType, String canonical) {
-        if (eventType == null || !eventType.startsWith("PET_")) {
-            return List.of();
-        }
-        return Address.findByCanonical(canonical)
-                .map(AccountAddressBinding::findActiveByAddress)
-                .orElseGet(List::of);
     }
 }

@@ -66,6 +66,8 @@ class AddressWebSocketTest {
                 "Primeira mensagem deve ser SNAPSHOT, recebido: " + snapshot);
         assertTrue(snapshot.contains(TEST_ADDRESS),
                 "Snapshot deve conter o endereço do canal: " + snapshot);
+        assertTrue(!snapshot.contains("HIBERNANDO"),
+                "Snapshot não pode mentir HIBERNANDO sem o bloco público do pet: " + snapshot);
     }
 
     @Test
@@ -121,6 +123,8 @@ class AddressWebSocketTest {
                 "Reconexão deve retornar SNAPSHOT, recebido: " + snapshot);
         assertTrue(snapshot.contains("\"cursor\":\"42\""),
                 "Snapshot deve refletir o cursor enviado: " + snapshot);
+        assertTrue(!snapshot.contains("HIBERNANDO"),
+                "Reconexão não pode mentir HIBERNANDO: " + snapshot);
     }
 
     private URI wsUriForAddress(String address) throws Exception {

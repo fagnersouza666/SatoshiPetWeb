@@ -1,5 +1,7 @@
 package br.com.satoshipet.api.realtime;
 
+import br.com.satoshipet.api.account.Address;
+import br.com.satoshipet.api.pet.PetPublicSnapshot;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.websockets.next.OnClose;
@@ -10,9 +12,11 @@ import io.quarkus.websockets.next.WebSocket;
 import io.quarkus.websockets.next.WebSocketConnection;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -54,19 +58,13 @@ public class AddressWebSocket {
      * Se não houver eventos anteriores, cursor será "0".
      */
     @OnOpen
+    @Transactional
     public String onOpen(WebSocketConnection connection) {
         String canonical = connection.pathParam("canonical");
         LOG.debugf("Nova conexão no canal address:%s id=%s", canonical, connection.id());
 
         String cursor = cursorService.currentCursor(canonical);
-
-        // Snapshot mínimo — estado HIBERNANDO enquanto PetLifecycle não está implementado.
-        Map<String, Object> stateData = Map.of(
-                "address", canonical,
-                "state", "HIBERNANDO"
-        );
-
-        return serializeOrNull(WebSocketMessage.snapshot(cursor, stateData));
+        return serializeOrNull(WebSocketMessage.snapshot(cursor, publicSnapshot(canonical)));
     }
 
     /**
@@ -74,6 +72,7 @@ public class AddressWebSocket {
      * Para RECONNECT, reproduz eventos posteriores ao cursor informado.
      */
     @OnTextMessage
+    @Transactional
     public String onMessage(WebSocketConnection connection, String rawMessage) {
         try {
             WebSocketMessage msg = objectMapper.readValue(rawMessage, WebSocketMessage.class);
@@ -93,12 +92,8 @@ public class AddressWebSocket {
                             cursorService.eventsAfter(canonical, requestedCursor);
 
                     if (missed.isEmpty()) {
-                        // Nenhum evento perdido — confirma o cursor solicitado pelo cliente
-                        Map<String, Object> stateData = Map.of(
-                                "address", canonical,
-                                "state", "HIBERNANDO",
-                                "resumedFrom", requestedCursor
-                        );
+                        Map<String, Object> stateData = publicSnapshot(canonical);
+                        stateData.put("resumedFrom", requestedCursor);
                         yield serializeOrNull(WebSocketMessage.snapshot(requestedCursor, stateData));
                     }
 
@@ -167,6 +162,21 @@ public class AddressWebSocket {
                         LOG.debugf("Falha ao enviar evento para %s", c.id());
                     }
                 });
+    }
+
+    private static Map<String, Object> publicSnapshot(String canonical) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("address", canonical);
+        Address.findByCanonical(canonical).ifPresent(address -> {
+            PetPublicSnapshot pet = PetPublicSnapshot.fromAddress(address);
+            if (pet.presentation() != null) {
+                data.put("presentation", pet.presentation());
+            }
+            if (pet.petState() != null) {
+                data.put("state", pet.petState());
+            }
+        });
+        return data;
     }
 
     private String serializeOrNull(Object obj) {

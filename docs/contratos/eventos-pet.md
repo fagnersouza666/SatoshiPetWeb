@@ -66,8 +66,9 @@ no payload público).
 ## Transporte
 
 `OutboxWebSocketConsumer` publica `PET_*` no canal de endereço (campo
-`address` do payload) e faz fan-out da mesma projeção pública para as contas
-com vínculo ativo nesse endereço. Ver [websocket-endereco.md](./websocket-endereco.md).
+`address` do payload). **Não** faz fan-out no WebSocket de conta — esse canal
+ainda não valida sessão. A fila autenticada permanece em
+`GET /api/v1/account/pet/presentation-queue`. Ver [websocket-endereco.md](./websocket-endereco.md).
 
 A fila de apresentação da conta (`GET /api/v1/account/pet/presentation-queue`)
 consome os mesmos eventos: `PET_FEEDING_APPLIED` / `PET_FEEDING_REVISED`

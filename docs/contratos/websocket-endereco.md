@@ -33,14 +33,17 @@ Envelope JSON comum:
 O cursor é string monotônica por canal, atribuída por
 `RealtimeEventCursorService`.
 
-### Snapshot inicial (FUND)
+### Snapshot inicial
 
-Enquanto o motor do pet não estiver implementado, o snapshot inclui:
+O snapshot usa o bloco público do pet (`PetPublicSnapshot`): `presentation`
+e `state` (estado emocional da criatura). Sem pet no endereço, só o
+`address` — não há `state` fictício.
 
 ```json
 {
   "address": "bc1…",
-  "state": "HIBERNANDO"
+  "presentation": "CREATURE",
+  "state": "ALIMENTADO"
 }
 ```
 
