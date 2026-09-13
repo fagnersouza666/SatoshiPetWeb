@@ -28,6 +28,7 @@
 |-----------|-----------|
 | [operacao/csp.md](./operacao/csp.md) | Política CSP da PWA, origens permitidas e verificação |
 | [operacao/cors.md](./operacao/cors.md) | Allowlist de origens da API e verificação de rejeição |
+| [operacao/rate-limite.md](./operacao/rate-limite.md) | Limites configuráveis por IP e conta |
 
 ## Backlog de implementação
 
