@@ -178,7 +178,7 @@ npm run versao -- corrigir       # 0.1.0 → 0.1.1 (correção de bug)
 O pipeline em `.github/workflows/ci.yml` executa automaticamente em push para
 `main`/`develop` e em pull requests:
 
-1. **verificar-pwa** — `check-pwa.sh` (Node 22.23.2)
+1. **verificar-pwa** — `check-pwa.sh` + lint Prettier (Node 22.23.2)
 2. **verificar-api** — `check-api.sh` (Java 25 + Docker + PostgreSQL 18.6)
 3. **build-imagens** — `docker build` para PWA e API, tagueado com `X.Y.Z`
 

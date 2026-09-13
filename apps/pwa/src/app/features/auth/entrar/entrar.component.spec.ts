@@ -14,10 +14,7 @@ describe('EntrarComponent', () => {
 
     await TestBed.configureTestingModule({
       imports: [EntrarComponent],
-      providers: [
-        provideRouter([]),
-        { provide: AuthService, useValue: authSpy },
-      ],
+      providers: [provideRouter([]), { provide: AuthService, useValue: authSpy }],
     }).compileComponents();
 
     fixture = TestBed.createComponent(EntrarComponent);

@@ -6,7 +6,8 @@
     "start": "node ../../scripts/with-node.mjs ng serve",
     "build": "node ../../scripts/with-node.mjs ng build",
     "watch": "node ../../scripts/with-node.mjs ng build --watch --configuration development",
-    "test": "node ../../scripts/with-node.mjs ng test"
+    "test": "node ../../scripts/with-node.mjs ng test",
+    "lint": "prettier --check \"src/**/*.{ts,html,scss}\""
   },
   "private": true,
   "packageManager": "npm@12.0.2",

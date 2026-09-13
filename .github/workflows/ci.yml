@@ -1,7 +1,7 @@
 name: CI
 
 # Executa em pushes para main/develop e em pull requests para main.
-# Fluxo: verificar-pwa → verificar-api → build-imagens
+# Fluxo: verificar-pwa (testes + lint) → verificar-api → build-imagens
 # Cada etapa usa os mesmos scripts locais que os desenvolvedores executam
 # antes de commitar (check-pwa.sh e check-api.sh).
 on:
@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Verificação da PWA: versao.sh verificar + testes Angular (Vitest)
+  # Verificação da PWA: versao.sh verificar + testes Angular (Vitest) + lint
   # Espelho do ./infra/scripts/check-pwa.sh
   # ---------------------------------------------------------------------------
   verificar-pwa:
@@ -39,6 +39,10 @@ jobs:
 
       - name: Executar check:pwa
         run: npm run check:pwa
+
+      - name: Executar lint da PWA
+        working-directory: apps/pwa
+        run: npm run lint
 
   # ---------------------------------------------------------------------------
   # Verificação da API: versao.sh verificar + mvnw verify

@@ -9,7 +9,11 @@ import { PrivateCacheService } from './private-cache.service';
 describe('AuthService', () => {
   let service: AuthService;
   let apiSpy: { post: ReturnType<typeof vi.fn> };
-  let sessionSpy: { setSession: ReturnType<typeof vi.fn>; clearSession: ReturnType<typeof vi.fn>; isAuthenticated: ReturnType<typeof vi.fn> };
+  let sessionSpy: {
+    setSession: ReturnType<typeof vi.fn>;
+    clearSession: ReturnType<typeof vi.fn>;
+    isAuthenticated: ReturnType<typeof vi.fn>;
+  };
   let cacheSpy: { clearPrivateCaches: ReturnType<typeof vi.fn> };
   let router: Router;
 

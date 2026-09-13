@@ -28,11 +28,13 @@ describe('PrivateCacheService', () => {
 
   it('deve deletar caches com nome contendo "/api/v1/conta"', async () => {
     const deleteSpy = vi.fn().mockResolvedValue(true);
-    const keysSpy = vi.fn().mockResolvedValue([
-      'ngsw:db:/api/v1/conta:responses',
-      'ngsw:db:/api/v1/auth:responses',
-      'public-assets-cache',
-    ]);
+    const keysSpy = vi
+      .fn()
+      .mockResolvedValue([
+        'ngsw:db:/api/v1/conta:responses',
+        'ngsw:db:/api/v1/auth:responses',
+        'public-assets-cache',
+      ]);
 
     Object.defineProperty(globalThis, 'caches', {
       value: { keys: keysSpy, delete: deleteSpy },
@@ -49,10 +51,7 @@ describe('PrivateCacheService', () => {
 
   it('deve deletar caches com nome contendo "private"', async () => {
     const deleteSpy = vi.fn().mockResolvedValue(true);
-    const keysSpy = vi.fn().mockResolvedValue([
-      'private-account-data',
-      'public-icons',
-    ]);
+    const keysSpy = vi.fn().mockResolvedValue(['private-account-data', 'public-icons']);
 
     Object.defineProperty(globalThis, 'caches', {
       value: { keys: keysSpy, delete: deleteSpy },
@@ -87,10 +86,9 @@ describe('PrivateCacheService', () => {
       .mockRejectedValueOnce(new Error('Falha ao deletar'))
       .mockResolvedValue(true);
 
-    const keysSpy = vi.fn().mockResolvedValue([
-      'ngsw:db:/api/v1/conta:resp1',
-      'ngsw:db:/api/v1/conta:resp2',
-    ]);
+    const keysSpy = vi
+      .fn()
+      .mockResolvedValue(['ngsw:db:/api/v1/conta:resp1', 'ngsw:db:/api/v1/conta:resp2']);
 
     Object.defineProperty(globalThis, 'caches', {
       value: { keys: keysSpy, delete: deleteSpy },

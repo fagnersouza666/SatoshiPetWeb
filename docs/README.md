@@ -69,6 +69,7 @@ Os comandos abaixo devem ser executados na raiz do repositório:
 | `npm run build:api` | Empacota somente a API, sem executar testes |
 | `npm test` | Executa os testes unitários da PWA e da API |
 | `npm run test:pwa` | Executa somente os testes da PWA, sem watch |
+| `npm --prefix apps/pwa run lint` | Verifica a formatação da fonte da PWA com Prettier |
 | `npm run test:api` | Executa somente os testes da API |
 | `npm run verify` | Confere a versão do produto, testa a PWA e executa `verify` da API |
 | `npm run test:versao` | Testes do script `infra/scripts/versao.mjs` |
