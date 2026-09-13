@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @QuarkusTest
@@ -86,6 +87,45 @@ class JobLockServiceTest {
         assertTrue(renewed, "Deve renovar lock do mesmo owner");
 
         jobLockService.release(jobName, "owner-1");
+    }
+
+    @Test
+    void naoRenovaLockDeOutroOwner() {
+        String jobName = "lock-renew-owner-" + UUID.randomUUID();
+
+        assertTrue(jobLockService.acquire(jobName, "owner-1", Duration.ofMinutes(1)));
+
+        assertFalse(jobLockService.renew(jobName, "owner-2", Duration.ofMinutes(5)),
+                "Somente o owner atual pode renovar o lock");
+        assertFalse(jobLockService.acquire(jobName, "owner-2", Duration.ofMillis(20)),
+                "A tentativa de renovação de outro owner não deve liberar o lock");
+
+        jobLockService.release(jobName, "owner-1");
+    }
+
+    @Test
+    void lockExpiradoNaoPodeSerRenovado() throws InterruptedException {
+        String jobName = "lock-renew-expired-" + UUID.randomUUID();
+
+        assertTrue(jobLockService.acquire(jobName, "owner-old", Duration.ofMillis(1)));
+        Thread.sleep(50);
+
+        assertFalse(jobLockService.renew(jobName, "owner-old", Duration.ofMinutes(5)),
+                "Um owner cujo TTL expirou não pode reter o lock");
+        assertTrue(jobLockService.acquire(jobName, "owner-new", Duration.ofMinutes(1)),
+                "Outro owner deve assumir um lock expirado");
+
+        jobLockService.release(jobName, "owner-new");
+    }
+
+    @Test
+    void rejeitaTtlNaoPositivo() {
+        String jobName = "lock-invalid-ttl-" + UUID.randomUUID();
+
+        assertThrows(IllegalArgumentException.class,
+                () -> jobLockService.acquire(jobName, "owner-1", Duration.ZERO));
+        assertThrows(IllegalArgumentException.class,
+                () -> jobLockService.renew(jobName, "owner-1", Duration.ofSeconds(-1)));
     }
 
     @Test
