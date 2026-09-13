@@ -1,0 +1,119 @@
+# Override de produção — Satoshi Pet Web
+#
+# Sobrepõe docker-compose.yml para implantação em produção.
+# Serviços de desenvolvimento (mailpit, bitcoind, minio-init) não sobem porque
+# têm profile "dev" e esse profile não é ativado aqui.
+#
+# Uso:
+#   docker compose \
+#     -f infra/docker-compose.yml \
+#     -f infra/docker-compose.prod.yml \
+#     pull
+#   docker compose \
+#     -f infra/docker-compose.yml \
+#     -f infra/docker-compose.prod.yml \
+#     up -d
+#
+# Variáveis obrigatórias em produção (defina no .env ou no ambiente do host):
+#   APP_VERSION      — versão semântica da imagem (ex.: 0.1.0)
+#   IMAGE_REGISTRY   — prefixo do registry (ex.: ghcr.io/seu-org)
+#   DOMAIN           — domínio público (ex.: satoshi-pet.example.com)
+#   POSTGRES_PASSWORD
+#   MINIO_ROOT_PASSWORD
+#   MAIL_HOST, MAIL_PORT, MAIL_USER, MAIL_PASSWORD
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (se usar S3 real)
+#
+# As imagens são construídas e publicadas pelo pipeline de CI.
+# Nunca use "latest" em produção — sempre especifique APP_VERSION.
+
+services:
+  # ---------------------------------------------------------------------------
+  # PWA — usa imagem pré-construída pelo CI (sem build local)
+  # ---------------------------------------------------------------------------
+  pwa:
+    image: "${IMAGE_REGISTRY:-ghcr.io/satoshi-pet}/satoshi-pet-pwa:${APP_VERSION:?variável APP_VERSION obrigatória em produção}"
+    build: !reset null
+    restart: unless-stopped
+    # Portas internas não expostas no host — tráfego chega pelo Caddy
+    ports: !reset []
+
+  # ---------------------------------------------------------------------------
+  # API — usa imagem pré-construída pelo CI (sem build local)
+  # ---------------------------------------------------------------------------
+  api:
+    image: "${IMAGE_REGISTRY:-ghcr.io/satoshi-pet}/satoshi-pet-api:${APP_VERSION:?variável APP_VERSION obrigatória em produção}"
+    build: !reset null
+    restart: unless-stopped
+    ports: !reset []
+    environment:
+      # Substitui as configurações de dev pelo provedor de e-mail real
+      QUARKUS_MAILER_HOST: "${MAIL_HOST:?variável MAIL_HOST obrigatória em produção}"
+      QUARKUS_MAILER_PORT: "${MAIL_PORT:-587}"
+      QUARKUS_MAILER_AUTH_METHODS: "PLAIN"
+      QUARKUS_MAILER_USERNAME: "${MAIL_USER:?variável MAIL_USER obrigatória em produção}"
+      QUARKUS_MAILER_PASSWORD: "${MAIL_PASSWORD:?variável MAIL_PASSWORD obrigatória em produção}"
+      QUARKUS_MAILER_START_TLS: "REQUIRED"
+      # S3 real (remove o override de endpoint do MinIO local)
+      QUARKUS_S3_ENDPOINT_OVERRIDE: ""
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:?variável AWS_ACCESS_KEY_ID obrigatória em produção}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:?variável AWS_SECRET_ACCESS_KEY obrigatória em produção}"
+      QUARKUS_S3_AWS_REGION: "${AWS_REGION:-sa-east-1}"
+      # Bitcoin — Esplora Mainnet (sem RPC local)
+      BITCOIN_RPC_URL: ""
+      BITCOIN_NETWORK: "mainnet"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — sem porta exposta no host; dados em volume declarado
+  # ---------------------------------------------------------------------------
+  postgres:
+    restart: unless-stopped
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?variável POSTGRES_PASSWORD obrigatória em produção}"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # MinIO — sem porta exposta; console desabilitado em produção
+  # Em produção, considere substituir por AWS S3, Cloudflare R2 ou outro S3-compatível.
+  # ---------------------------------------------------------------------------
+  minio:
+    restart: unless-stopped
+    ports: !reset []
+    environment:
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?variável MINIO_ROOT_PASSWORD obrigatória em produção}"
+    command: server /data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Caddy — proxy reverso com TLS Let's Encrypt automático
+  # DOMAIN define o hostname para o qual o certificado será emitido.
+  # Certifique-se de que DNS aponte para este servidor antes de subir.
+  # ---------------------------------------------------------------------------
+  caddy:
+    restart: unless-stopped
+    volumes:
+      - ./caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      DOMAIN: "${DOMAIN:?variável DOMAIN obrigatória em produção}"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M

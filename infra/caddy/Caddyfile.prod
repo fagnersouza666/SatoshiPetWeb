@@ -1,0 +1,77 @@
+# Caddyfile — produção com TLS Let's Encrypt automático
+#
+# Uso:
+#   Referenciado pelo docker-compose.prod.yml como override do Caddyfile de dev.
+#   DOMAIN deve estar definido como variável de ambiente antes de subir o Compose.
+#
+# Pré-requisito:
+#   O DNS do domínio ${DOMAIN} deve apontar para o IP deste servidor antes da
+#   primeira subida. O Caddy negociará o certificado Let's Encrypt automaticamente
+#   via ACME HTTP-01 na porta 80.
+
+{
+    # E-mail para notificações de expiração do certificado Let's Encrypt
+    email "infra@{env.DOMAIN}"
+    http_port  80
+    https_port 443
+    admin off
+}
+
+{env.DOMAIN} {
+    # API REST Quarkus
+    handle /api/* {
+        reverse_proxy api:8080 {
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-For  {remote_host}
+            # Timeout para operações longas (ex.: geração de arte via IA)
+            transport http {
+                read_timeout  120s
+                write_timeout 120s
+            }
+        }
+    }
+
+    # Quarkus health/metrics (restrito por IP em produção)
+    handle /q/health* {
+        @interno {
+            remote_ip 127.0.0.1/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+        }
+        reverse_proxy @interno api:8080
+        respond "Acesso negado" 403
+    }
+
+    # WebSocket — eventos em tempo real
+    handle /ws/* {
+        reverse_proxy api:8080 {
+            flush_interval -1
+            header_up Connection {http.upgrade}
+            header_up Upgrade   {http.upgrade}
+        }
+    }
+
+    # PWA Angular
+    handle {
+        reverse_proxy pwa:80
+    }
+
+    # Headers de segurança
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "DENY"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        Permissions-Policy        "geolocation=(), camera=(), microphone=()"
+        -Server
+    }
+
+    log {
+        output stdout
+        format json
+        level  WARN
+    }
+}
+
+# HTTP → HTTPS
+http://{env.DOMAIN} {
+    redir https://{env.DOMAIN}{uri} permanent
+}

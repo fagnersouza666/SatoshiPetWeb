@@ -1,0 +1,69 @@
+# Caddyfile — desenvolvimento local com TLS automático
+#
+# Caddy gera um certificado TLS usando sua CA interna (local_certs).
+# Para que o navegador confie no certificado, execute uma vez:
+#
+#   docker exec satoshi-caddy caddy trust
+#   # Em seguida, reinicie o navegador.
+#
+# Se preferir HTTP simples durante o desenvolvimento, acesse diretamente:
+#   http://localhost:4200  — PWA (nginx)
+#   http://localhost:8080  — API Quarkus
+#
+# Serviços roteados por este proxy:
+#   /api/*  e  /q/*  e  /ws/*  →  api:8080  (Quarkus)
+#   tudo o mais               →  pwa:80    (nginx + Angular SPA)
+
+{
+    # Certificados TLS emitidos pela CA local do Caddy (não requerem internet)
+    local_certs
+    # Porta HTTP e HTTPS (respeitam variáveis do Compose)
+    http_port  80
+    https_port 443
+    # Logs do servidor admin apenas dentro do container
+    admin 0.0.0.0:2019
+}
+
+# HTTPS local
+:443 {
+    tls internal
+
+    # Quarkus health, métricas e liveness/readiness probes
+    handle /q/* {
+        reverse_proxy api:8080
+    }
+
+    # API REST Quarkus (/api/v1/...)
+    handle /api/* {
+        reverse_proxy api:8080 {
+            header_up X-Forwarded-Proto https
+            header_up X-Forwarded-For {remote_host}
+        }
+    }
+
+    # WebSocket — eventos em tempo real (SSE ou WS)
+    handle /ws/* {
+        reverse_proxy api:8080 {
+            # Mantém a conexão WebSocket ativa
+            flush_interval -1
+            header_up Connection {http.upgrade}
+            header_up Upgrade   {http.upgrade}
+        }
+    }
+
+    # PWA Angular — SPA com fallback para index.html
+    handle {
+        reverse_proxy pwa:80
+    }
+
+    log {
+        output stdout
+        format json
+        level  INFO
+    }
+}
+
+# HTTP → HTTPS redirect
+:80 {
+    redir https://{host}{uri} permanent
+}

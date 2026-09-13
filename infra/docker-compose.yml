@@ -1,39 +1,125 @@
-# Composição inicial do desenvolvimento local.
-# Serviços de dados e Bitcoin de teste entram pelas entregas específicas do
-# backlog e não devem ser simulados ou substituídos por Mainnet.
+# Composição de desenvolvimento — Satoshi Pet Web
+#
+# Sobe a stack completa localmente sem instalar Node.js, Java ou qualquer
+# serviço diretamente no host (ADR-002).
+#
+# Uso básico:
+#   docker compose -f infra/docker-compose.yml up --build
+#
+# Variáveis de ambiente: copie .env.example para .env na raiz do repositório.
+# Cada variável tem um default seguro para dev local.
 
 services:
+  # ---------------------------------------------------------------------------
+  # Proxy reverso — Caddy com TLS local automático
+  # Acesso: https://localhost (HTTPS) ou http://localhost (redireciona para HTTPS)
+  # Para confiar no certificado local: docker exec satoshi-caddy caddy trust
+  # ---------------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    container_name: satoshi-caddy
+    depends_on:
+      - pwa
+      - api
+    ports:
+      - "${CADDY_HTTP_PORT:-80}:80"
+      - "${CADDY_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # PWA Angular — build estático servido por nginx
+  # Acesso direto (sem Caddy): http://localhost:4200
+  # ---------------------------------------------------------------------------
   pwa:
     build:
       context: ..
       dockerfile: apps/pwa/Dockerfile
+    container_name: satoshi-pwa
     depends_on:
       - api
     ports:
       - "${PWA_PORT:-4200}:80"
+    restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # API Quarkus — backend REST + WebSocket
+  # Acesso direto (sem Caddy): http://localhost:8080
+  # ---------------------------------------------------------------------------
   api:
     build:
       context: ..
       dockerfile: services/api/Dockerfile
+    container_name: satoshi-api
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
-      QUARKUS_HTTP_HOST: 0.0.0.0
-      QUARKUS_HTTP_PORT: 8080
+      QUARKUS_HTTP_HOST: "0.0.0.0"
+      QUARKUS_HTTP_PORT: "8080"
+      # Banco de dados
       QUARKUS_DATASOURCE_JDBC_URL: "jdbc:postgresql://postgres:5432/${POSTGRES_DB:-satoshi_pet}"
       QUARKUS_DATASOURCE_USERNAME: "${POSTGRES_USER:-satoshi_pet}"
       QUARKUS_DATASOURCE_PASSWORD: "${POSTGRES_PASSWORD:-satoshi_pet_dev}"
+      # Object storage (MinIO em dev, S3 em produção via override)
+      QUARKUS_S3_ENDPOINT_OVERRIDE: "http://minio:9000"
+      QUARKUS_S3_AWS_REGION: "us-east-1"
+      AWS_ACCESS_KEY_ID: "${MINIO_ROOT_USER:-minioadmin}"
+      AWS_SECRET_ACCESS_KEY: "${MINIO_ROOT_PASSWORD:-minioadmin_dev}"
+      # Mailer (aponta para Mailpit em dev; sobrescreva para produção)
+      QUARKUS_MAILER_HOST: "${MAIL_HOST:-mailpit}"
+      QUARKUS_MAILER_PORT: "${MAIL_PORT:-1025}"
+      QUARKUS_MAILER_AUTH_METHODS: "DISABLED"
+      QUARKUS_MAILER_START_TLS: "DISABLED"
+      # Magic link TTL (formato ISO-8601, ex.: PT15M)
+      MAGIC_LINK_TTL: "${MAGIC_LINK_TTL:-PT15M}"
+      # Bitcoin regtest (profile dev); em produção aponta para Esplora mainnet
+      BITCOIN_RPC_URL: "http://${BITCOIN_RPC_USER:-bitcoin}:${BITCOIN_RPC_PASSWORD:-bitcoin_dev}@bitcoind:18443"
+      BITCOIN_NETWORK: "regtest"
     ports:
       - "${API_PORT:-8080}:8080"
+    restart: unless-stopped
 
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 18.6
+  # Acesso: localhost:5432 (dev) — não expor em produção sem firewall
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:18.6
+    container_name: satoshi-postgres
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-satoshi_pet}"
+      POSTGRES_USER: "${POSTGRES_USER:-satoshi_pet}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-satoshi_pet_dev}"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # MinIO — object storage S3-compatível (substitui AWS S3 em dev)
+  # API: http://localhost:9000
+  # Console: http://localhost:9001  (usuário: minioadmin / minioadmin_dev)
+  # ---------------------------------------------------------------------------
   minio:
     image: minio/minio:RELEASE.2025-06-13T11-33-47Z
+    container_name: satoshi-minio
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
-      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin_dev}"
     ports:
       - "${MINIO_API_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
@@ -43,26 +129,85 @@ services:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
-      retries: 5
-      start_period: 10s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
 
-  postgres:
-    image: postgres:18.6
+  # ---------------------------------------------------------------------------
+  # MinIO Init — cria os buckets necessários na primeira execução
+  # Roda uma vez e sai; não interfere com o MinIO principal
+  # ---------------------------------------------------------------------------
+  minio-init:
+    image: minio/mc:RELEASE.2025-05-21T01-59-54Z
+    container_name: satoshi-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD} &&
+        mc mb --ignore-existing local/pet-artwork &&
+        mc mb --ignore-existing local/pet-artwork-staging &&
+        mc anonymous set download local/pet-artwork-staging &&
+        echo '==> Buckets criados: pet-artwork, pet-artwork-staging'
+      "
     environment:
-      POSTGRES_DB: "${POSTGRES_DB:-satoshi_pet}"
-      POSTGRES_USER: "${POSTGRES_USER:-satoshi_pet}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-satoshi_pet_dev}"
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin_dev}"
 
+  # ---------------------------------------------------------------------------
+  # Mailpit — servidor SMTP de captura para desenvolvimento
+  # Todos os e-mails enviados pela API são interceptados aqui.
+  # Interface web: http://localhost:8025
+  # SMTP: localhost:1025 (sem autenticação, sem TLS)
+  # ---------------------------------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:v1.21
+    container_name: satoshi-mailpit
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Bitcoin Core regtest — rede Bitcoin isolada para testes (profile: dev)
+  # RPC: http://localhost:18443 (usuário: bitcoin / bitcoin_dev)
+  # ZMQ blocos: tcp://localhost:28332
+  # ZMQ transações: tcp://localhost:28333
+  #
+  # NUNCA usar Mainnet ou enviar fundos reais para validar software (PRD §16.4).
+  # ---------------------------------------------------------------------------
+  bitcoind:
+    image: bitcoin/bitcoin:29.0
+    container_name: satoshi-bitcoind
+    command:
+      - -regtest
+      - -server
+      - -rpcallowip=0.0.0.0/0
+      - -rpcbind=0.0.0.0
+      - -rpcuser=${BITCOIN_RPC_USER:-bitcoin}
+      - -rpcpassword=${BITCOIN_RPC_PASSWORD:-bitcoin_dev}
+      - -zmqpubrawblock=tcp://0.0.0.0:28332
+      - -zmqpubrawtx=tcp://0.0.0.0:28333
+      - -fallbackfee=0.0001
+      - -txindex=1
+      - -addresstype=bech32
+      - -changetype=bech32
+    ports:
+      - "${BITCOIN_REGTEST_PORT:-18443}:18443"
+      - "${BITCOIN_ZMQ_BLOCK_PORT:-28332}:28332"
+      - "${BITCOIN_ZMQ_TX_PORT:-28333}:28333"
+    volumes:
+      - bitcoin-data:/home/bitcoin/.bitcoin
+    restart: unless-stopped
+
+# ---------------------------------------------------------------------------
+# Volumes nomeados — dados persistentes entre recriações dos containers
+# Para resetar o estado local: docker compose ... down -v
+# ---------------------------------------------------------------------------
 volumes:
-  minio-data:
   postgres-data:
+  minio-data:
+  bitcoin-data:
+  caddy-data:
+  caddy-config:
