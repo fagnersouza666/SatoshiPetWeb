@@ -21,6 +21,7 @@
 | [contratos/eventos-bitcoin.md](./contratos/eventos-bitcoin.md) | Catálogo versionado de eventos e transições do monitor Bitcoin |
 | [contratos/eventos-bitcoin-redaction.md](./contratos/eventos-bitcoin-redaction.md) | Allowlist e redaction da projeção pública dos eventos Bitcoin |
 | [contratos/eventos-pet.md](./contratos/eventos-pet.md) | Catálogo `PET_*` (payload público, CA-009) |
+| [contratos/pet-apresentacao-e-stats.md](./contratos/pet-apresentacao-e-stats.md) | Fila de apresentação, skip e estatísticas do pet da conta |
 | [contratos/object-storage.md](./contratos/object-storage.md) | Endpoints, buckets e variáveis do MinIO local |
 
 ## Operação

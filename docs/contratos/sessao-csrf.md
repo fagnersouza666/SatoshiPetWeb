@@ -21,7 +21,7 @@ O servidor persiste somente o hash SHA-256 do token (`Session.sessionTokenHash`)
 | --- | --- |
 | Nome | `X-CSRF-Token` |
 | Conteúdo | Token CSRF bruto entregue na criação da sessão |
-| Obrigatório em | `POST`, `PATCH`, `DELETE` autenticados |
+| Obrigatório em | `POST`, `PATCH`, `DELETE` autenticados (inclui `POST /api/v1/account/pet/presentation/skip`) |
 
 Endpoints públicos de magic link (`/api/v1/auth/magic-link*`) e requisições
 sem sessão autenticada não exigem CSRF.

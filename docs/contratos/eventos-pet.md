@@ -61,3 +61,8 @@ no payload público).
 `OutboxWebSocketConsumer` publica `PET_*` no canal de endereço (campo
 `address` do payload) e faz fan-out da mesma projeção pública para as contas
 com vínculo ativo nesse endereço. Ver [websocket-endereco.md](./websocket-endereco.md).
+
+A fila de apresentação da conta (`GET /api/v1/account/pet/presentation-queue`)
+consome os mesmos eventos: `PET_FEEDING_APPLIED` / `PET_FEEDING_REVISED`
+somente com alimentação LIVE apresentável, e `PET_BORN` / `PET_REAPPEARED`.
+Ver [pet-apresentacao-e-stats.md](./pet-apresentacao-e-stats.md).
