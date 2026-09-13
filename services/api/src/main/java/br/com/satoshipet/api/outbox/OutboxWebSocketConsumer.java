@@ -1,5 +1,8 @@
 package br.com.satoshipet.api.outbox;
 
+import br.com.satoshipet.api.account.AccountAddressBinding;
+import br.com.satoshipet.api.account.Address;
+import br.com.satoshipet.api.realtime.AccountWebSocket;
 import br.com.satoshipet.api.realtime.AddressWebSocket;
 import br.com.satoshipet.api.realtime.RealtimeEventCursorService;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -8,13 +11,14 @@ import jakarta.enterprise.context.ApplicationScoped;
 import org.jboss.logging.Logger;
 
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Consumidor do outbox transacional que transmite eventos de endereço
  * para todos os clientes WebSocket conectados ao canal correspondente.
  *
- * <p>Suporta eventos cujo tipo começa com {@code BITCOIN_} ou {@code TEST_}
- * (prefixo {@code TEST_} reservado para testes automatizados).</p>
+ * <p>Suporta eventos cujo tipo começa com {@code BITCOIN_}, {@code PET_}
+ * ou {@code TEST_} (prefixo {@code TEST_} reservado para testes automatizados).</p>
  *
  * <p>O {@code aggregate_id} é tratado como o endereço canônico quando
  * {@code aggregate_type} for "Address".</p>
@@ -25,15 +29,18 @@ public class OutboxWebSocketConsumer implements OutboxConsumer {
     private static final Logger LOG = Logger.getLogger(OutboxWebSocketConsumer.class);
 
     private final AddressWebSocket addressWebSocket;
+    private final AccountWebSocket accountWebSocket;
     private final RealtimeEventCursorService cursorService;
     private final ObjectMapper objectMapper;
 
     public OutboxWebSocketConsumer(
             AddressWebSocket addressWebSocket,
+            AccountWebSocket accountWebSocket,
             RealtimeEventCursorService cursorService,
             ObjectMapper objectMapper
     ) {
         this.addressWebSocket = addressWebSocket;
+        this.accountWebSocket = accountWebSocket;
         this.cursorService = cursorService;
         this.objectMapper = objectMapper;
     }
@@ -43,7 +50,9 @@ public class OutboxWebSocketConsumer implements OutboxConsumer {
         if (eventType == null) {
             return false;
         }
-        return eventType.startsWith("BITCOIN_") || eventType.startsWith("TEST_");
+        return eventType.startsWith("BITCOIN_")
+                || eventType.startsWith("PET_")
+                || eventType.startsWith("TEST_");
     }
 
     /**
@@ -70,6 +79,7 @@ public class OutboxWebSocketConsumer implements OutboxConsumer {
                 event.id, event.eventType, canonical, cursor);
 
         addressWebSocket.broadcast(canonical, cursor, payload);
+        fanOutPetEventToAccounts(event.eventType, canonical, cursor, payload);
     }
 
     /**
@@ -105,6 +115,32 @@ public class OutboxWebSocketConsumer implements OutboxConsumer {
         } catch (Exception e) {
             LOG.warnf("Falha ao parsear payload do evento id=%s — transmitindo string bruta", event.id);
             return event.payload;
+        }
+    }
+
+    /**
+     * Espelha eventos {@code PET_*} para as contas com vínculo ativo no endereço.
+     * Sem endereço resolvido, o fan-out é ignorado.
+     */
+    private void fanOutPetEventToAccounts(String eventType, String canonical, String cursor, Object payload) {
+        if (eventType == null || !eventType.startsWith("PET_")) {
+            return;
+        }
+        Optional<Address> address;
+        try {
+            address = Address.findByCanonical(canonical);
+        } catch (IllegalStateException e) {
+            LOG.debugf("Fan-out de contas ignorado (endereço não resolvido) address=%s", canonical);
+            return;
+        }
+        if (address.isEmpty()) {
+            return;
+        }
+        for (AccountAddressBinding binding : AccountAddressBinding.findActiveByAddress(address.get())) {
+            if (binding.account == null || binding.account.id == null) {
+                continue;
+            }
+            accountWebSocket.send(binding.account.id.toString(), cursor, payload);
         }
     }
 }

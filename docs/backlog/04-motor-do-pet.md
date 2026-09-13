@@ -181,6 +181,9 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §16.3  
 **Critérios de aceite:** —  
 **Dependências:** FUND-04  
+**Notas técnicas:** `PetEngine` grava `PET_*` na outbox na mesma TX
+(`aggregateType=Pet`, payload público CA-009). Contrato:
+[`docs/contratos/eventos-pet.md`](../contratos/eventos-pet.md). `PET_ARTWORK_READY` fica no épico ART.  
 
 ---
 

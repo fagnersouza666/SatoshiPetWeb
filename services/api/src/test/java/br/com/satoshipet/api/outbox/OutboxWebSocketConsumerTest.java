@@ -1,5 +1,6 @@
 package br.com.satoshipet.api.outbox;
 
+import br.com.satoshipet.api.realtime.AccountWebSocket;
 import br.com.satoshipet.api.realtime.AddressWebSocket;
 import br.com.satoshipet.api.realtime.RealtimeEventCursorService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -29,6 +30,9 @@ class OutboxWebSocketConsumerTest {
     @Mock
     AddressWebSocket addressWebSocket;
 
+    @Mock
+    AccountWebSocket accountWebSocket;
+
     RealtimeEventCursorService cursorService;
 
     OutboxWebSocketConsumer consumer;
@@ -36,7 +40,8 @@ class OutboxWebSocketConsumerTest {
     @BeforeEach
     void setUp() {
         cursorService = new RealtimeEventCursorService();
-        consumer = new OutboxWebSocketConsumer(addressWebSocket, cursorService, new ObjectMapper());
+        consumer = new OutboxWebSocketConsumer(
+                addressWebSocket, accountWebSocket, cursorService, new ObjectMapper());
     }
 
     @Test
@@ -52,11 +57,33 @@ class OutboxWebSocketConsumerTest {
     }
 
     @Test
+    void supportsEventosPet() {
+        assertTrue(consumer.supports("PET_FEEDING_APPLIED"));
+        assertTrue(consumer.supports("PET_BORN"));
+        assertTrue(consumer.supports("PET_STATE_CHANGED"));
+    }
+
+    @Test
     void naoSuportaOutrosEventos() {
-        assertFalse(consumer.supports("PET_FEEDING_APPLIED"));
+        assertTrue(consumer.supports("PET_FEEDING_APPLIED"));
         assertFalse(consumer.supports("DCA_RECOMMENDATION_GENERATED"));
         assertFalse(consumer.supports(null));
         assertFalse(consumer.supports(""));
+    }
+
+    @Test
+    void consumeEventoPetUsaCampoAddressDoPayload() {
+        OutboxEvent event = criarEvento(
+                "Pet",
+                UUID.randomUUID().toString(),
+                "PET_STATE_CHANGED",
+                "{\"address\":\"bc1qfromPetPayload\",\"eventType\":\"PET_STATE_CHANGED\"}");
+        doNothing().when(addressWebSocket).broadcast(anyString(), anyString(), any());
+
+        consumer.consume(event);
+
+        verify(addressWebSocket).broadcast(eq("bc1qfromPetPayload"), anyString(), any());
+        verify(accountWebSocket, never()).send(anyString(), anyString(), any());
     }
 
     @Test

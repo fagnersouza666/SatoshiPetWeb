@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:satoshi-pet-web:contracts:pet-events:v1",
+  "title": "Evento público do motor do pet",
+  "description": "Payload público dos sete eventos PET_* (CA-009). Sem petId, accountId, e-mail ou foodSourceAccountId.",
+  "type": "object",
+  "required": [
+    "address",
+    "eventType",
+    "occurredAt",
+    "presentation",
+    "reserveHours",
+    "awaitingReference"
+  ],
+  "properties": {
+    "address": {
+      "type": "string",
+      "minLength": 14,
+      "maxLength": 90,
+      "pattern": "^[A-Za-z0-9]+$",
+      "description": "Endereço Bitcoin canônico."
+    },
+    "eventType": {
+      "type": "string",
+      "enum": [
+        "PET_FEEDING_APPLIED",
+        "PET_FEEDING_REVISED",
+        "PET_FEEDING_INVALIDATED",
+        "PET_BORN",
+        "PET_RETURNED_TO_EGG",
+        "PET_REAPPEARED",
+        "PET_STATE_CHANGED"
+      ]
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Instante UTC da transição."
+    },
+    "presentation": {
+      "type": "string",
+      "enum": ["EGG", "CREATURE"]
+    },
+    "emotionalState": {
+      "type": ["string", "null"],
+      "enum": [
+        "ALIMENTADO",
+        "PENSANDO",
+        "CHATEADO",
+        "FAMINTO",
+        "CRITICO",
+        "HIBERNANDO",
+        null
+      ],
+      "description": "Obrigatório na criatura; omitido ou nulo quando presentation é EGG."
+    },
+    "reserveHours": {
+      "type": "string",
+      "pattern": "^-?\\d+(\\.\\d+)?$",
+      "description": "Reserva em horas como decimal textual (CC-10). Nunca number."
+    },
+    "awaitingReference": {
+      "type": "boolean"
+    },
+    "feedingStatus": {
+      "type": "string",
+      "enum": ["PROVISIONAL", "VALID", "INVALIDATED"]
+    },
+    "amountSats": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Satoshis da alimentação; somente em PET_FEEDING_*."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "eventType": {
+            "type": "string",
+            "pattern": "^PET_FEEDING_"
+          }
+        }
+      },
+      "then": {
+        "required": ["feedingStatus", "amountSats"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "presentation": {
+            "const": "EGG"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "emotionalState": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ],
+  "unevaluatedProperties": false
+}

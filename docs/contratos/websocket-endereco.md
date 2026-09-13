@@ -55,9 +55,10 @@ O replay usa ring buffer em memória por endereço (suficiente para FUND).
 
 ## Integração outbox
 
-`OutboxWebSocketConsumer` publica eventos cujo tipo começa com `BITCOIN_` (e
-`TEST_` em testes). Quando `aggregate_type = "Address"`, o canal é o
-`aggregate_id` canônico.
+`OutboxWebSocketConsumer` publica eventos cujo tipo começa com `BITCOIN_`,
+`PET_` (payload público do motor do pet; ver [eventos-pet.md](./eventos-pet.md))
+ou `TEST_` (testes). Quando `aggregate_type = "Address"`, o canal é o
+`aggregate_id` canônico; eventos `PET_*` usam o campo `address` do payload.
 
 ## Testes
 

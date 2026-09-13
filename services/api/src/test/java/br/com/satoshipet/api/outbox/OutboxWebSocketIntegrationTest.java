@@ -38,6 +38,7 @@ class OutboxWebSocketIntegrationTest {
         // Verifica que o consumer foi instanciado via CDI corretamente
         org.junit.jupiter.api.Assertions.assertNotNull(consumer);
         org.junit.jupiter.api.Assertions.assertTrue(consumer.supports("BITCOIN_TRANSACTION_OBSERVED"));
+        org.junit.jupiter.api.Assertions.assertTrue(consumer.supports("PET_STATE_CHANGED"));
     }
 
     @Test
@@ -63,6 +64,28 @@ class OutboxWebSocketIntegrationTest {
         String cursorDepois = cursorService.currentCursor(canonical);
         org.junit.jupiter.api.Assertions.assertNotEquals("0", cursorDepois,
                 "Cursor deve ter avançado após o consumo do evento");
+    }
+
+    @Test
+    @Transactional
+    void consumerAvancaCursorAoProcessarEventoPet() {
+        String canonical = "bc1q-pet-it-" + UUID.randomUUID().toString().substring(0, 8);
+        assertEquals("0", cursorService.currentCursor(canonical));
+
+        OutboxEvent event = OutboxEvent.create(
+                "Pet",
+                UUID.randomUUID().toString(),
+                "PET_STATE_CHANGED",
+                "{\"address\":\"" + canonical + "\",\"eventType\":\"PET_STATE_CHANGED\","
+                        + "\"occurredAt\":\"2026-09-13T15:00:00Z\",\"presentation\":\"CREATURE\","
+                        + "\"emotionalState\":\"ALIMENTADO\",\"reserveHours\":\"6.0000000000\","
+                        + "\"awaitingReference\":false}",
+                Instant.now(),
+                null
+        );
+
+        assertDoesNotThrow(() -> consumer.consume(event));
+        org.junit.jupiter.api.Assertions.assertNotEquals("0", cursorService.currentCursor(canonical));
     }
 
     @Test

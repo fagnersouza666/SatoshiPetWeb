@@ -38,8 +38,8 @@ alimentações duplicados.
 O monitor emite somente os seis eventos `BITCOIN_*` acima. Eventos de pet,
 como `PET_FEEDING_APPLIED`, `PET_FEEDING_REVISED` e
 `PET_FEEDING_INVALIDATED`, pertencem ao motor do pet e não são substituídos
-por eventos Bitcoin. Compra declarada, sugestão DCA e notificação também não
-geram alimentação.
+por eventos Bitcoin. Catálogo e payload público: [eventos-pet.md](./eventos-pet.md).
+Compra declarada, sugestão DCA e notificação também não geram alimentação.
 
 Os contratos de payload, correlação, ordenação e entrega pela outbox/WebSocket
 serão definidos nas atividades próprias, sem alterar estes nomes ou as
