@@ -136,19 +136,20 @@ npm run build:pwa         # build de produção
 # API
 npm run start:api         # quarkus:dev
 npm run test:api          # testes unitários
-# verify da API (Testcontainers) — via check-api.sh
+# verify da API (Testcontainers) — npm run check:api ou ./infra/scripts/check-api.sh (Linux)
 
-# Prova local antes de commit/push
-./infra/scripts/check-pwa.sh    # versao.sh verificar + npm run test:pwa
-./infra/scripts/check-api.sh    # versao.sh verificar + ./mvnw verify (exige Docker)
-npm run verify                  # versao.sh verificar + testes PWA + verify da API
+# Prova local antes de commit/push — npm run em qualquer OS; .sh só no Linux/macOS
+npm run check:pwa               # versao verificar + npm run test:pwa
+npm run check:api               # versao verificar + mvnw verify (exige Docker)
+npm run verify                  # versao verificar + testes PWA + verify da API
+# Linux (opcional): ./infra/scripts/check-pwa.sh | check-api.sh — wrappers dos .mjs
 
 # Versão do produto (PWA + API juntos)
-./infra/scripts/versao.sh atual
-./infra/scripts/versao.sh verificar
-./infra/scripts/versao.sh corrigir          # 1.0.0 → 1.0.1
-./infra/scripts/versao.sh funcionalidade    # 1.0.0 → 1.1.0
-./infra/scripts/versao.sh grande            # só com pedido explícito
+npm run versao -- atual
+npm run versao -- verificar
+npm run versao -- corrigir          # 1.0.0 → 1.0.1
+npm run versao -- funcionalidade    # 1.0.0 → 1.1.0
+npm run versao -- grande            # só com pedido explícito
 
 # Infra local — planejado (épico FUND)
 docker compose up -d      # PostgreSQL, MinIO, regtest

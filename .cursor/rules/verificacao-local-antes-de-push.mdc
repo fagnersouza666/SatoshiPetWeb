@@ -1,5 +1,5 @@
 ---
-description: Prova local obrigatória (check-api.sh / check-pwa.sh) antes de commit e push
+description: Prova local obrigatória antes de commit/push — npm run (qualquer OS) ou .sh (Linux)
 alwaysApply: true
 ---
 
@@ -9,14 +9,15 @@ Nunca faça `git commit` ou `git push` de código sem rodar antes a prova local 
 
 ## Obrigatório
 
-- Mexeu em `apps/pwa/**` → rodar `./infra/scripts/check-pwa.sh` (`versao.sh verificar` + `npm run test:pwa`) e só prosseguir com tudo verde.
-- Mexeu em `services/api/**` → rodar `./infra/scripts/check-api.sh` (`versao.sh verificar` + `./mvnw verify`; exige Docker) e só prosseguir com tudo verde.
+- Mexeu em `apps/pwa/**` → rodar `npm run check:pwa` (Linux: `./infra/scripts/check-pwa.sh` equivalente) e só prosseguir com tudo verde.
+- Mexeu em `services/api/**` → rodar `npm run check:api` (Linux: `./infra/scripts/check-api.sh`; exige Docker) e só prosseguir com tudo verde.
+- **Windows (dev ocasional):** sempre `npm run …` — não usar `.sh` no PowerShell.
 - Mexeu nas duas superfícies → rodar os dois scripts.
 - Mexeu só em `docs/`, `.cursor/` ou infra sem código de produto → declarar isso no resumo da entrega em vez de rodar os scripts.
 
 ## Anti-padrão
 
-`ng build` ou `mvnw compile` verde **não** significa testes verdes. O gate é o script completo (`check-pwa.sh` / `check-api.sh`), não uma etapa dele.
+`ng build` ou `mvnw compile` verde **não** significa testes verdes. O gate é o comando completo (`npm run check:pwa` / `npm run check:api`), não uma etapa dele.
 
 ## Se a CI falhar
 

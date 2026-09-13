@@ -8,11 +8,11 @@ alwaysApply: true
 PWA (`apps/pwa/package.json`), API (`services/api/pom.xml`) e a raiz (`package.json`) **sempre na mesma versão de produto** (`X.Y.Z`). O POM usa o sufixo `-SNAPSHOT`. Nunca edite esses arquivos à mão — use o script.
 
 ```bash
-./infra/scripts/versao.sh funcionalidade   # 1.0.0 → 1.1.0
-./infra/scripts/versao.sh corrigir          # 1.0.0 → 1.0.1
-./infra/scripts/versao.sh grande            # 1.0.0 → 2.0.0  (só se o usuário pedir)
-./infra/scripts/versao.sh verificar         # falha se divergirem
-./infra/scripts/versao.sh atual             # mostra e avisa
+npm run versao -- funcionalidade   # 1.0.0 → 1.1.0
+npm run versao -- corrigir          # 1.0.0 → 1.0.1
+npm run versao -- grande            # 1.0.0 → 2.0.0  (só se o usuário pedir)
+npm run versao -- verificar         # falha se divergirem
+npm run versao -- atual             # mostra e avisa
 ```
 
 ## Quando incrementar
