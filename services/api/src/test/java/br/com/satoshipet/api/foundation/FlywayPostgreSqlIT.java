@@ -159,11 +159,11 @@ class FlywayPostgreSqlIT {
     private static void assertMigrationHistory(Flyway flyway) {
         MigrationInfo[] migrations = flyway.info().all();
 
-        assertEquals(4, migrations.length, "O catálogo deve conter V1 a V4");
+        assertEquals(5, migrations.length, "O catálogo deve conter V1 a V5");
         assertTrue(Arrays.stream(migrations)
                 .allMatch(migration -> migration.getState() == MigrationState.SUCCESS),
                 "Todas as migrations devem estar aplicadas com sucesso");
-        assertEquals("4", flyway.info().current().getVersion().getVersion());
+        assertEquals("5", flyway.info().current().getVersion().getVersion());
     }
 
     private static Set<String> tableNames(Connection connection) throws SQLException {
@@ -194,10 +194,11 @@ class FlywayPostgreSqlIT {
         }
 
         try (PreparedStatement statement = connection.prepareStatement(
-                "INSERT INTO addresses (id, canonical, created_at) VALUES (?, ?, ?)")) {
+                "INSERT INTO addresses (id, canonical, network, created_at) VALUES (?, ?, ?, ?)")) {
             statement.setObject(1, ADDRESS_ID);
             statement.setString(2, ADDRESS);
-            setInstant(statement, 3, FIXTURE_TIME);
+            statement.setString(3, "regtest");
+            setInstant(statement, 4, FIXTURE_TIME);
             statement.executeUpdate();
         }
 
