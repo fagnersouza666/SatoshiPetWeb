@@ -88,6 +88,28 @@ public class AccountAddressBinding extends PanacheEntityBase {
         ).firstResultOptional();
     }
 
+    /** Vínculos ativos ({@code unboundAt} nulo) do endereço. */
+    public static List<AccountAddressBinding> findActiveByAddress(Address address) {
+        return list("address = ?1 AND unboundAt IS NULL", address);
+    }
+
+    /** Vínculo ativo mais antigo do endereço ({@code boundAt} ASC, depois {@code id} ASC). */
+    public static Optional<AccountAddressBinding> findOldestActiveByAddress(Address address) {
+        return find(
+                "address = ?1 AND unboundAt IS NULL ORDER BY boundAt ASC, id ASC",
+                address
+        ).firstResultOptional();
+    }
+
+    /** Indica se a conta possui vínculo ativo com o endereço. */
+    public static boolean isActivelyBound(Account account, Address address) {
+        return find(
+                "account = ?1 AND address = ?2 AND unboundAt IS NULL",
+                account,
+                address
+        ).firstResultOptional().isPresent();
+    }
+
     /** Retorna o vínculo histórico ou ativo entre conta e endereço. */
     public static Optional<AccountAddressBinding> findByAccountAndAddress(
             Account account, Address address

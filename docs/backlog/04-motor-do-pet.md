@@ -32,7 +32,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §6.2, **CC-05**  
 **Critérios de aceite:** CA-002 (estado compartilhado)  
 **Dependências:** PET-01, DCA-15 (porção referência)  
-**Notas técnicas:** Conta secundária vê "Sua sugestão" vs "Porção 24h do pet". Histórico de porção em `pet_reference_portions` (`V5__create_pet_engine.sql`).
+**Notas técnicas:** Conta secundária vê "Sua sugestão" vs "Porção 24h do pet". Histórico de porção em `pet_reference_portions` (`V5__create_pet_engine.sql`). Resolução via `PetReferencePortionPort` / `PersistentPetReferencePortionPort`: porção vigente é da fonte alimentar ativa (criador, depois vínculo mais antigo); snapshot de outra conta não vira current; sem snapshot da nova fonte usa `lastPositivePortionSats` (CA-055); sem porção positiva devolve vazio (CC-11 / CA-026). `refreshFoodSource` não reescreve snapshots nem transfere direitos de nome.
 
 ---
 
@@ -104,6 +104,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** **CC-11**  
 **Critérios de aceite:** CA-026, CA-027  
 **Dependências:** PET-02, DCA  
+**Notas técnicas:** `PetReferencePortionPort.currentPositivePortion` devolve vazio enquanto não houver snapshot da fonte nem `lastPositivePortionSats` > 0; não inventa 10.000 sats nem plano DCA.  
 
 ---
 
