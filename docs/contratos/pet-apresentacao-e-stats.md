@@ -59,7 +59,8 @@ Itens elegíveis da outbox do pet da conta autenticada:
 - tipos `PET_FEEDING_APPLIED`, `PET_FEEDING_REVISED`, `PET_BORN`, `PET_REAPPEARED`
 - `createdAt >= boundAt` do vínculo ativo desta conta
 - alimentação só entra se existir `PetFeeding` do mesmo evento com
-  `origin=LIVE` e `presentable=true` (CA-014)
+  `origin=LIVE`, `presentable=true` e `status ≠ INVALIDATED` (CA-014).
+  `PET_FEEDING_REVISED` casa o id com amount/duration **atuais** da linha.
 
 Cursor: `presentation_cursors.last_presented_event_id`. A fila são os elegíveis
 **depois** do evento cursor (`createdAt`, depois `id`). Sem cursor, todos os

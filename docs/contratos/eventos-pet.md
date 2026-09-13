@@ -15,7 +15,7 @@ Não emitir `PET_ARTWORK_READY` neste recorte (épico ART).
 
 | Evento | Transição |
 | --- | --- |
-| `PET_FEEDING_APPLIED` | Nova alimentação `LIVE` criada (`PROVISIONAL` ou `VALID`) e apresentável |
+| `PET_FEEDING_APPLIED` | Nova alimentação `LIVE` apresentável, ou a primeira vez em que `presentable` vira verdadeiro (confirmação no ovo) |
 | `PET_FEEDING_REVISED` | Alimentação `LIVE` existente com amount/duration/status revistos (RBF), sem ser a primeira criação |
 | `PET_FEEDING_INVALIDATED` | Alimentação `LIVE` invalidada |
 | `PET_BORN` | Primeira vez em que `bornAt` é preenchido |
@@ -25,6 +25,13 @@ Não emitir `PET_ARTWORK_READY` neste recorte (épico ART).
 
 Confirmação de um `PROVISIONAL` que apenas promove a `VALID` com as mesmas
 horas **não** gera segundo `PET_FEEDING_APPLIED` nem `PET_FEEDING_REVISED`.
+Se a alimentação **passa a ser apresentável** (mempool no ovo → confirmação),
+emite `PET_FEEDING_APPLIED` e **não** `PET_FEEDING_REVISED`.
+
+Idempotência na outbox: `PET_FEEDING_APPLIED` / `PET_FEEDING_INVALIDATED`
+usam `nameUUID(tipo:feedingId)`. `PET_FEEDING_REVISED` usa
+`nameUUID(PET_FEEDING_REVISED:feedingId:amountSats:durationHours)` para o
+mesmo retry ser no-op e um RBF posterior gerar nova linha.
 
 Não emitir `PET_FEEDING_*` para `HISTORICAL_RECONSTRUCTION` nem para
 alimentação com `presentable=false` (CA-014). A reconstrução pode emitir no

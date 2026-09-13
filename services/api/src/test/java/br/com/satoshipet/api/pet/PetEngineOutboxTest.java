@@ -187,6 +187,37 @@ class PetEngineOutboxTest {
         assertFalse(node.get("reserveHours").isNumber());
     }
 
+    @Test
+    @Transactional
+    void confirmacaoDoOvoEmiteAppliedENaoRevised() {
+        Fixture fixture = persistPet("outbox-egg-applied", PetPresentation.EGG, true);
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, false, NOW);
+        assertTrue(eventsOf(fixture.pet, "PET_FEEDING_APPLIED").isEmpty());
+        assertTrue(eventsOf(fixture.pet, "PET_FEEDING_REVISED").isEmpty());
+
+        lifecycle.onReceiptConfirmed(fixture.pet.id, receiptId, FIVE_THOUSAND, NOW.plusSeconds(30));
+
+        assertEquals(1, eventsOf(fixture.pet, "PET_FEEDING_APPLIED").size());
+        assertTrue(eventsOf(fixture.pet, "PET_FEEDING_REVISED").isEmpty());
+    }
+
+    @Test
+    @Transactional
+    void duasRevisoesComValoresDiferentesGeramDuasLinhasRevised() {
+        Fixture fixture = persistCreatureWithPortion("outbox-rbf-twice");
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, false, NOW);
+
+        lifecycle.onReceiptRevised(fixture.pet.id, receiptId, 10_000L, NOW.plusSeconds(1));
+        lifecycle.onReceiptRevised(fixture.pet.id, receiptId, 15_000L, NOW.plusSeconds(2));
+
+        List<OutboxEvent> revised = eventsOf(fixture.pet, "PET_FEEDING_REVISED");
+        assertEquals(2, revised.size(), "segundo RBF não pode ser engolido pelo id estável");
+        assertEquals(1, eventsOf(fixture.pet, "PET_FEEDING_APPLIED").size());
+    }
+
     private static List<OutboxEvent> eventsOf(Pet pet, String eventType) {
         return petEvents(pet).stream().filter(event -> eventType.equals(event.eventType)).toList();
     }

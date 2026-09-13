@@ -196,6 +196,35 @@ class PetPresentationServiceTest {
         assertEquals(null, queue.items().getFirst().amountSats());
     }
 
+    @Test
+    @Transactional
+    void alimentacaoInvalidadaSaiDaFila() {
+        Fixture fixture = persistCreatureWithPortion("queue-invalid");
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, true, NOW);
+        assertEquals(1, presentationService.presentationQueue(fixture.account).items().size());
+
+        lifecycle.onReceiptInvalidated(fixture.pet.id, receiptId, NOW);
+
+        PresentationQueueResponse queue = presentationService.presentationQueue(fixture.account);
+        assertTrue(queue.items().isEmpty(), "INVALIDATED não pode permanecer na fila de comemoração");
+    }
+
+    @Test
+    @Transactional
+    void revisaoVigenteEntraNaFila() {
+        Fixture fixture = persistCreatureWithPortion("queue-revised");
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, false, NOW);
+        lifecycle.onReceiptRevised(fixture.pet.id, receiptId, 10_000L, NOW);
+
+        List<String> types = presentationService.presentationQueue(fixture.account).items().stream()
+                .map(PresentationQueueItem::eventType)
+                .toList();
+        assertTrue(types.contains("PET_FEEDING_APPLIED"));
+        assertTrue(types.contains("PET_FEEDING_REVISED"), "REVISED vigente deve casar o id com amount/duration atuais");
+    }
+
     private Fixture persistCreatureWithPortion(String marker) {
         Address address = Address.create(uniqueCanonical(marker), NOW);
         address.persist();

@@ -9,6 +9,7 @@ import br.com.satoshipet.api.pet.FeedingOrigin;
 import br.com.satoshipet.api.pet.FeedingStatus;
 import br.com.satoshipet.api.pet.Pet;
 import br.com.satoshipet.api.pet.PetFeeding;
+import br.com.satoshipet.api.pet.PetFeedingEventIds;
 import br.com.satoshipet.api.pet.PetLifecyclePort;
 import br.com.satoshipet.api.pet.PetPresentation;
 import br.com.satoshipet.api.pet.PetReferencePortionPort;
@@ -400,7 +401,7 @@ public class PetEngine implements PetLifecyclePort {
             feeding.status = FeedingStatus.VALID;
             feeding.presentable = true;
             feeding.updatedAt = when;
-            maybeEmitRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
+            maybeEmitAppliedOrRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
             return;
         }
         evaluate(pet, when);
@@ -413,7 +414,7 @@ public class PetEngine implements PetLifecyclePort {
         BigDecimal appliedDelta = creditDelta(pet, theoretical.subtract(oldCredited), when);
         feeding.durationHours = oldCredited.add(appliedDelta);
         feeding.updatedAt = when;
-        maybeEmitRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
+        maybeEmitAppliedOrRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
     }
 
     private void reviseExisting(
@@ -437,7 +438,7 @@ public class PetEngine implements PetLifecyclePort {
         BigDecimal appliedDelta = creditDelta(pet, theoretical.subtract(oldCredited), when);
         feeding.durationHours = oldCredited.add(appliedDelta);
         feeding.updatedAt = when;
-        maybeEmitRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
+        maybeEmitAppliedOrRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
     }
 
     private void invalidateExisting(Pet pet, UUID logicalReceiptId, Instant when) {
@@ -450,6 +451,7 @@ public class PetEngine implements PetLifecyclePort {
         evaluate(pet, when);
         creditDelta(pet, creditedHours(pet, feeding).negate(), when);
         feeding.status = FeedingStatus.INVALIDATED;
+        feeding.presentable = false;
         feeding.updatedAt = when;
         if (EggPolicy.immediateEggOnLostBirthFoundation(
                 pet.bornAt != null,
@@ -483,7 +485,7 @@ public class PetEngine implements PetLifecyclePort {
                 confirmedSatsExcluding(pet.address, feeding.logicalReceiptId))) {
             returnToEgg(pet, when);
         }
-        maybeEmitRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
+        maybeEmitAppliedOrRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
     }
 
     private static void appear(Pet pet, Instant when) {
@@ -644,6 +646,25 @@ public class PetEngine implements PetLifecyclePort {
         }
     }
 
+    private void maybeEmitAppliedOrRevised(
+            Pet pet,
+            PetFeeding feeding,
+            Instant when,
+            long oldAmount,
+            BigDecimal oldDuration,
+            FeedingStatus oldStatus,
+            boolean wasPresentable
+    ) {
+        if (feeding.origin != FeedingOrigin.LIVE) {
+            return;
+        }
+        if (!wasPresentable && feeding.presentable) {
+            emitFeeding(PET_FEEDING_APPLIED, pet, feeding, when);
+            return;
+        }
+        maybeEmitRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
+    }
+
     private void maybeEmitRevised(
             Pet pet,
             PetFeeding feeding,
@@ -682,7 +703,7 @@ public class PetEngine implements PetLifecyclePort {
         if (feeding.origin != FeedingOrigin.LIVE) {
             return;
         }
-        emitPetEvent(eventType, pet, when, feedingEventId(eventType, feeding.id), feeding);
+        emitPetEvent(eventType, pet, when, PetFeedingEventIds.of(eventType, feeding), feeding);
     }
 
     private void emitPetEvent(String eventType, Pet pet, Instant when, UUID eventId, PetFeeding feeding) {
@@ -707,10 +728,6 @@ public class PetEngine implements PetLifecyclePort {
             throw new IllegalStateException("Falha ao serializar evento " + eventType, e);
         }
         outboxService.save(eventId, AGGREGATE_PET, pet.id.toString(), eventType, json, null);
-    }
-
-    private static UUID feedingEventId(String eventType, UUID feedingId) {
-        return UUID.nameUUIDFromBytes((eventType + ":" + feedingId).getBytes(StandardCharsets.UTF_8));
     }
 
     private static UUID lifecycleEventId(String eventType, Pet pet, Instant when) {

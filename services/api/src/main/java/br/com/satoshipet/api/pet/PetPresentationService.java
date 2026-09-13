@@ -10,12 +10,10 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 
 /**
  * Fila de apresentação por conta (PET-15, CC-15, CA-034, CA-035).
@@ -107,18 +105,16 @@ public class PetPresentationService {
             return true;
         }
         for (PetFeeding feeding : feedings) {
-            if (feeding.origin != FeedingOrigin.LIVE || !feeding.presentable) {
+            if (feeding.origin != FeedingOrigin.LIVE
+                    || !feeding.presentable
+                    || feeding.status == FeedingStatus.INVALIDATED) {
                 continue;
             }
-            if (feedingEventId(event.eventType, feeding.id).equals(event.id)) {
+            if (PetFeedingEventIds.of(event.eventType, feeding).equals(event.id)) {
                 return true;
             }
         }
         return false;
-    }
-
-    private static UUID feedingEventId(String eventType, UUID feedingId) {
-        return UUID.nameUUIDFromBytes((eventType + ":" + feedingId).getBytes(StandardCharsets.UTF_8));
     }
 
     private Optional<OutboxEvent> cursorWatermark(Account account) {
