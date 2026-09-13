@@ -43,6 +43,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §7.2, **CC-10**  
 **Critérios de aceite:** CA-015, CA-016, CA-018  
 **Dependências:** PET-02, BTC-05  
+**Notas técnicas:** `PetEngine` aplica `ReserveMath.hoursAdded` + `applyCap` (168h) ao creditar `PetFeeding`; `applyFeeding` legado no monitor é no-op até o Task 5.
 
 ---
 
@@ -53,6 +54,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §7.2  
 **Critérios de aceite:** CA-018, CA-019  
 **Dependências:** PET-03  
+**Notas técnicas:** `PetEngine.tick` e os handlers de recebimento (quando há porção) consomem via `ReserveClock.consume` antes de creditar; fome não gera dívida (CA-018).
 
 ---
 
@@ -73,7 +75,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §7.2, §9.3  
 **Critérios de aceite:** CA-017, CA-029, CA-030  
 **Dependências:** PET-03, BTC-05  
-**Notas técnicas:** Tabela `pet_feedings` em `V5__create_pet_engine.sql`; UNIQUE `(pet_id, logical_receipt_id)` (CA-017).  
+**Notas técnicas:** Tabela `pet_feedings` em `V5__create_pet_engine.sql`; UNIQUE `(pet_id, logical_receipt_id)` (CA-017). `PetEngine` (`PetLifecyclePort`) persiste LIVE idempotente; RBF via `onReceiptRevised` (delta de duração); invalidação marca `INVALIDATED` e devolve horas creditadas sem apagar a linha. Sem porção positiva (CC-11) não cria alimentação.  
 
 ---
 
@@ -104,7 +106,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** **CC-11**  
 **Critérios de aceite:** CA-026, CA-027  
 **Dependências:** PET-02, DCA  
-**Notas técnicas:** `PetReferencePortionPort.currentPositivePortion` devolve vazio enquanto não houver snapshot da fonte nem `lastPositivePortionSats` > 0; não inventa 10.000 sats nem plano DCA.  
+**Notas técnicas:** `PetReferencePortionPort.currentPositivePortion` devolve vazio enquanto não houver snapshot da fonte nem `lastPositivePortionSats` > 0; não inventa 10.000 sats nem plano DCA. `PetEngine` em recebimento sem porção não cria `PetFeeding` nem altera reserva (CA-026 lite); reconstrução histórica é Task 7.
 
 ---
 
@@ -155,6 +157,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** **CC-14**  
 **Critérios de aceite:** CA-028  
 **Dependências:** BTC-06, PET-07  
+**Notas técnicas:** `PetEngine` (CC-14 lite): ovo + pendente → `PROVISIONAL` com `durationHours=0` e `presentable=false`; confirmação credita horas e marca `VALID` (apresentação permanece EGG até EggPolicy). Criatura + pendente credita já em `PROVISIONAL`; confirmação só promove a `VALID`.
 
 ---
 

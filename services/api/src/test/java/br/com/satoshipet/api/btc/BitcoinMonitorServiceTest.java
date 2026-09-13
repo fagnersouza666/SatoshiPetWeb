@@ -1,7 +1,6 @@
 package br.com.satoshipet.api.btc;
 
 import br.com.satoshipet.api.account.Address;
-import br.com.satoshipet.api.pet.LoggingPetLifecyclePort;
 import br.com.satoshipet.api.support.bitcoin.BitcoinRbfFixture;
 import br.com.satoshipet.api.support.bitcoin.BitcoinReorgFixture;
 import br.com.satoshipet.api.support.bitcoin.BitcoinTransactionFixture;
@@ -37,13 +36,11 @@ class BitcoinMonitorServiceTest {
 
     @Inject BitcoinMonitorService monitorService;
     @Inject StubBitcoinIndexer stub;
-    @Inject LoggingPetLifecyclePort petLifecycle;
 
     @BeforeEach
     @Transactional
     void limpar() {
         stub.reset();
-        petLifecycle.reset();
         deletarEnderecoDeFixture(FIXTURE_ADDR);
         deletarEnderecoDeFixture(RBF_ADDR);
         deletarEnderecoDeFixture(REORG_ADDR);

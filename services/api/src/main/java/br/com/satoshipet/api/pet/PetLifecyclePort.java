@@ -6,29 +6,73 @@ import java.util.UUID;
 /**
  * Porta para eventos do ciclo de vida do pet.
  *
- * <p>Somente recebimentos reais on-chain confirmados/pendentes acionam
- * {@link #applyFeeding}. Compras declaradas, sugestões DCA ou notificações
- * nunca disparam alimentação (PRD §5, invariante crítico).</p>
+ * <p>Somente recebimentos reais on-chain confirmados/pendentes alimentam o
+ * pet. Compras declaradas, sugestões DCA ou notificações nunca disparam
+ * alimentação (PRD §5, invariante crítico).</p>
+ *
+ * <p>Pet desconhecido → {@link IllegalArgumentException} ("Pet não encontrado").</p>
  */
 public interface PetLifecyclePort {
 
     /**
-     * Registra uma alimentação causada por recebimento on-chain.
-     * Nunca deve ser chamado por evento de compra declarada ou sugestão DCA.
+     * Recebimento observado (mempool ou já confirmado).
      *
-     * @param petId      identificador do pet
-     * @param amountSats quantidade de sats recebidos
-     * @param when       momento do recebimento (UTC)
+     * @param petId            identificador do pet
+     * @param logicalReceiptId recebimento lógico único (CA-017)
+     * @param amountSats       sats do recebimento
+     * @param confirmed        {@code true} se já confirmado on-chain
+     * @param observedAt       instante da observação (UTC)
      */
-    void applyFeeding(UUID petId, long amountSats, Instant when);
+    void onReceiptObserved(
+            UUID petId,
+            UUID logicalReceiptId,
+            long amountSats,
+            boolean confirmed,
+            Instant observedAt);
 
     /**
-     * Atualiza o estado de exibição do pet.
-     * Estados válidos: ALIMENTADO, PENSANDO, CHATEADO, FAMINTO, CRITICO, HIBERNANDO.
-     *
-     * @param petId    identificador do pet
-     * @param state    novo estado
-     * @param when     momento da transição (UTC)
+     * Confirmação on-chain de um recebimento já observado ou inédito.
      */
-    void updateState(UUID petId, String state, Instant when);
+    void onReceiptConfirmed(UUID petId, UUID logicalReceiptId, long amountSats, Instant confirmedAt);
+
+    /**
+     * Revisão de valor (RBF). Quantidade zero equivale a invalidação.
+     */
+    void onReceiptRevised(UUID petId, UUID logicalReceiptId, long newAmountSats, Instant when);
+
+    /**
+     * Invalidação (reorg/drop). Não apaga a linha de alimentação.
+     */
+    void onReceiptInvalidated(UUID petId, UUID logicalReceiptId, Instant when);
+
+    /**
+     * Snapshot de saldo conhecido. Task 6 (carência/ovo) — no-op neste recorte.
+     */
+    void onBalanceKnown(UUID petId, long confirmedSats, long pendingIncomingSats, Instant when);
+
+    /**
+     * Falha de provedor. Não equivale a saldo zero (CA-031); não altera carência.
+     */
+    void onProviderFailure(UUID petId, Instant when);
+
+    /**
+     * Consome a reserva pelo tempo decorrido e atualiza o estado emocional.
+     */
+    void tick(UUID petId, Instant now);
+
+    /**
+     * Reconstrução histórica. Task 7 — no-op neste recorte.
+     */
+    void reconstruct(UUID petId, Instant now);
+
+    /**
+     * Compatibilidade temporária com o monitor Bitcoin (Task 5).
+     *
+     * <p>Não persiste alimentação. Somente recebimentos on-chain devem
+     * alimentar o pet; nunca compras ou DCA.</p>
+     *
+     * @deprecated usar {@link #onReceiptObserved} / {@link #onReceiptConfirmed}
+     */
+    @Deprecated(since = "motor-do-pet", forRemoval = false)
+    void applyFeeding(UUID petId, long amountSats, Instant when);
 }
