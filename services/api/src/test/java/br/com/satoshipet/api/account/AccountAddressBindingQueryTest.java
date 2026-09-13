@@ -27,7 +27,7 @@ class AccountAddressBindingQueryTest {
         Account unbound = persistAccount("unbound");
         AccountAddressBinding.create(kept, address, true, NOW).persist();
         AccountAddressBinding leaving = AccountAddressBinding.create(
-                unbound, address, false, NOW.plusSeconds(1));
+                unbound, address, true, NOW.plusSeconds(1));
         leaving.persist();
         leaving.unbind(NOW.plusSeconds(10));
 
@@ -44,7 +44,7 @@ class AccountAddressBindingQueryTest {
         Address address = persistAddress("oldest");
         Account later = persistAccount("later");
         Account earlier = persistAccount("earlier");
-        AccountAddressBinding.create(later, address, false, NOW.plusSeconds(60)).persist();
+        AccountAddressBinding.create(later, address, true, NOW.plusSeconds(60)).persist();
         AccountAddressBinding.create(earlier, address, true, NOW).persist();
 
         Optional<AccountAddressBinding> oldest =
@@ -64,7 +64,7 @@ class AccountAddressBindingQueryTest {
         AccountAddressBinding smallerId = AccountAddressBinding.create(first, address, true, NOW);
         smallerId.id = UUID.fromString("00000000-0000-4000-8000-000000000001");
         smallerId.persist();
-        AccountAddressBinding largerId = AccountAddressBinding.create(second, address, false, NOW);
+        AccountAddressBinding largerId = AccountAddressBinding.create(second, address, true, NOW);
         largerId.id = UUID.fromString("00000000-0000-4000-8000-000000000002");
         largerId.persist();
 

@@ -1,6 +1,5 @@
 package br.com.satoshipet.api.realtime;
 
-import br.com.satoshipet.api.account.Address;
 import br.com.satoshipet.api.pet.PetPublicSnapshot;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,9 +15,7 @@ import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Canal WebSocket para acompanhamento de um endereço Bitcoin em tempo real.
@@ -64,7 +61,9 @@ public class AddressWebSocket {
         LOG.debugf("Nova conexão no canal address:%s id=%s", canonical, connection.id());
 
         String cursor = cursorService.currentCursor(canonical);
-        return serializeOrNull(WebSocketMessage.snapshot(cursor, publicSnapshot(canonical)));
+        AddressSnapshot stateData = AddressSnapshot.fromPet(
+                canonical, PetPublicSnapshot.fromCanonical(canonical), null);
+        return serializeOrNull(new WebSocketSnapshot<>(WebSocketCursor.of(cursor), stateData));
     }
 
     /**
@@ -75,7 +74,7 @@ public class AddressWebSocket {
     @Transactional
     public String onMessage(WebSocketConnection connection, String rawMessage) {
         try {
-            WebSocketMessage msg = objectMapper.readValue(rawMessage, WebSocketMessage.class);
+            WebSocketClientMessage msg = objectMapper.readValue(rawMessage, WebSocketClientMessage.class);
 
             return switch (msg.type()) {
                 case "PONG" -> {
@@ -83,7 +82,7 @@ public class AddressWebSocket {
                     yield null; // sem resposta ao PONG
                 }
                 case "RECONNECT" -> {
-                    String requestedCursor = msg.cursor() != null ? msg.cursor() : "0";
+                    String requestedCursor = msg.cursor() != null ? msg.cursor().value() : "0";
                     LOG.debugf("Reconexão com cursor=%s para %s", requestedCursor, connection.id());
                     String canonical = connection.pathParam("canonical");
 
@@ -92,16 +91,20 @@ public class AddressWebSocket {
                             cursorService.eventsAfter(canonical, requestedCursor);
 
                     if (missed.isEmpty()) {
-                        Map<String, Object> stateData = publicSnapshot(canonical);
-                        stateData.put("resumedFrom", requestedCursor);
-                        yield serializeOrNull(WebSocketMessage.snapshot(requestedCursor, stateData));
+                        AddressSnapshot stateData = AddressSnapshot.fromPet(
+                                canonical,
+                                PetPublicSnapshot.fromCanonical(canonical),
+                                requestedCursor);
+                        yield serializeOrNull(new WebSocketSnapshot<>(
+                                WebSocketCursor.of(requestedCursor), stateData));
                     }
 
                     // Envia cada evento perdido como EVENT; retorna apenas o primeiro via yield
                     // (os demais são enviados assincronamente)
                     List<String> serialized = new ArrayList<>();
                     for (RealtimeEventCursorService.StoredEvent event : missed) {
-                        String s = serializeOrNull(WebSocketMessage.event(event.cursor(), event.data()));
+                        String s = serializeOrNull(WebSocketEvent.from(
+                                event.cursor(), event.data(), objectMapper));
                         if (s != null) {
                             serialized.add(s);
                         }
@@ -150,7 +153,7 @@ public class AddressWebSocket {
      * @param data      dados do evento a transmitir
      */
     public void broadcast(String canonical, String cursor, Object data) {
-        String message = serializeOrNull(WebSocketMessage.event(cursor, data));
+        String message = serializeOrNull(WebSocketEvent.from(cursor, data, objectMapper));
         if (message == null) return;
 
         openConnections.stream()
@@ -162,21 +165,6 @@ public class AddressWebSocket {
                         LOG.debugf("Falha ao enviar evento para %s", c.id());
                     }
                 });
-    }
-
-    private static Map<String, Object> publicSnapshot(String canonical) {
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("address", canonical);
-        Address.findByCanonical(canonical).ifPresent(address -> {
-            PetPublicSnapshot pet = PetPublicSnapshot.fromAddress(address);
-            if (pet.presentation() != null) {
-                data.put("presentation", pet.presentation());
-            }
-            if (pet.petState() != null) {
-                data.put("state", pet.petState());
-            }
-        });
-        return data;
     }
 
     private String serializeOrNull(Object obj) {

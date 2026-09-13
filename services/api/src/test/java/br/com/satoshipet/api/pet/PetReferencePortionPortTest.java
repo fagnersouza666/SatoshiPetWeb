@@ -81,7 +81,7 @@ class PetReferencePortionPortTest {
         Fixture fixture = persistPetWithBinding("cc05");
         Account secondary = persistAccount("secondary");
         AccountAddressBinding.create(
-                secondary, fixture.address, false, NOW.plusSeconds(60)).persist();
+                secondary, fixture.address, true, NOW.plusSeconds(60)).persist();
 
         port.recordPositivePortion(
                 fixture.pet.id,
@@ -117,7 +117,7 @@ class PetReferencePortionPortTest {
         Fixture fixture = persistPetWithBinding("sec-only");
         Account secondary = persistAccount("sec-only-acc");
         AccountAddressBinding.create(
-                secondary, fixture.address, false, NOW.plusSeconds(60)).persist();
+                secondary, fixture.address, true, NOW.plusSeconds(60)).persist();
 
         port.recordPositivePortion(
                 fixture.pet.id,
@@ -147,7 +147,7 @@ class PetReferencePortionPortTest {
         Fixture fixture = persistPetWithBinding("fallback-snap");
         Account remaining = persistAccount("remaining");
         AccountAddressBinding.create(
-                remaining, fixture.address, false, NOW.plusSeconds(30)).persist();
+                remaining, fixture.address, true, NOW.plusSeconds(30)).persist();
 
         port.recordPositivePortion(
                 fixture.pet.id,
@@ -181,7 +181,7 @@ class PetReferencePortionPortTest {
         Fixture fixture = persistPetWithBinding("fallback-last");
         Account remaining = persistAccount("remaining-last");
         AccountAddressBinding.create(
-                remaining, fixture.address, false, NOW.plusSeconds(30)).persist();
+                remaining, fixture.address, true, NOW.plusSeconds(30)).persist();
 
         port.recordPositivePortion(
                 fixture.pet.id,
@@ -298,7 +298,7 @@ class PetReferencePortionPortTest {
 
         Account newcomer = persistAccount("newcomer");
         AccountAddressBinding.create(
-                newcomer, fixture.address, false, NOW.plusSeconds(300)).persist();
+                newcomer, fixture.address, true, NOW.plusSeconds(300)).persist();
 
         Optional<PetReferencePortionPort.ResolvedPortion> current =
                 port.currentPositivePortion(fixture.pet.id);

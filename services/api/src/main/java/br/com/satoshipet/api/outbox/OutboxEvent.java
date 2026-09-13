@@ -120,10 +120,15 @@ public class OutboxEvent extends PanacheEntityBase {
 
     /**
      * Retorna até {@code limit} eventos ainda não processados,
-     * ordenados do mais antigo para o mais recente.
+     * ordenados do mais antigo para o mais recente e, em empate,
+     * pelo identificador para manter a ordem determinística.
      */
     public static List<OutboxEvent> findPending(int limit) {
-        return find("processedAt IS NULL ORDER BY createdAt ASC")
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit deve ser positivo");
+        }
+
+        return find("processedAt IS NULL ORDER BY createdAt ASC, id ASC")
                 .page(0, limit)
                 .list();
     }

@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Persistência do schema V5 do motor do pet: pets ampliados, alimentações,
+ * Persistência do schema V6 do motor do pet: pets ampliados, alimentações,
  * porção de referência e cursor de apresentação.
  */
 @QuarkusTest
@@ -36,8 +36,8 @@ class PetPersistenceTest {
     Flyway flyway;
 
     @Test
-    void flywayCorrenteEhVersao5() {
-        assertEquals("5", flyway.info().current().getVersion().getVersion());
+    void flywayCorrenteEhVersao6() {
+        assertEquals("6", flyway.info().current().getVersion().getVersion());
     }
 
     @Test

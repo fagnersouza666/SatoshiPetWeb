@@ -244,7 +244,7 @@ Entidades principais e invariantes:
 | `PresentationCursor` | Por conta; visitante usa cursor local CC-15 |
 | `Outbox` / `Job` | Idempotência e travas por domínio |
 
-**Motor persistente (este recorte):** migration `V5__create_pet_engine.sql`, `PetEngine` (`PetLifecyclePort`), eventos `PET_*` na outbox transacional e `PetTickJob` (relógio do servidor, lock `pet-tick`). O bloco compartilhado do pet (CA-009, sem `petId`/`accountId`/e-mail) é projetado em `GET /api/v1/public/addresses/{address}` e `GET /api/v1/account/pet` via `PetPublicSnapshot`.
+**Motor persistente (este recorte):** migration `V6__create_pet_engine.sql`, `PetEngine` (`PetLifecyclePort`), eventos `PET_*` na outbox transacional e `PetTickJob` (relógio do servidor, lock `pet-tick`). O bloco compartilhado do pet (CA-009, sem `petId`/`accountId`/e-mail) é projetado em `GET /api/v1/public/addresses/{address}` e `GET /api/v1/account/pet` via `PetPublicSnapshot`.
 
 ---
 

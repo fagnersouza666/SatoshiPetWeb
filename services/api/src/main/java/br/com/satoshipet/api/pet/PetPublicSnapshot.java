@@ -52,6 +52,15 @@ public record PetPublicSnapshot(
      *
      * @return snapshot preenchido, ou {@link #empty()} se não houver pet
      */
+    public static PetPublicSnapshot fromCanonical(String canonical) {
+        if (canonical == null || canonical.isBlank()) {
+            return empty();
+        }
+        return Address.findByCanonical(canonical)
+                .map(PetPublicSnapshot::fromAddress)
+                .orElseGet(PetPublicSnapshot::empty);
+    }
+
     public static PetPublicSnapshot fromAddress(Address address) {
         Objects.requireNonNull(address, "address");
         Optional<Pet> pet = Pet.findByAddress(address);

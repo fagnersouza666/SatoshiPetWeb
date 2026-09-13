@@ -4,19 +4,30 @@ import br.com.satoshipet.api.job.JobLockService;
 import io.quarkus.arc.All;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.transaction.Status;
 import jakarta.transaction.Transactional;
+import jakarta.transaction.TransactionSynchronizationRegistry;
 import org.jboss.logging.Logger;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
  * Publica eventos pendentes do outbox transacional para os consumidores registrados.
  *
- * <p>Usa {@link JobLockService} para garantir que apenas uma instância da aplicação
- * processe os eventos ao mesmo tempo em ambientes multi-réplica.</p>
+ * <p>Usa {@link JobLockService} para garantir que apenas uma instância processe
+ * eventos do mesmo agregado ao mesmo tempo. Agregados diferentes podem ser
+ * processados em paralelo por réplicas distintas.</p>
  */
 @ApplicationScoped
 public class OutboxPublisher {
@@ -26,6 +37,12 @@ public class OutboxPublisher {
     /** Nome do job de lock distribuído. */
     static final String JOB_NAME = "outbox-publisher";
 
+    /** Prefixo das travas distribuídas por agregado do outbox. */
+    static final String DOMAIN_LOCK_PREFIX = "outbox-domain:";
+
+    /** Limite da coluna {@code job_locks.job_name}. */
+    private static final int MAX_LOCK_NAME_LENGTH = 100;
+
     /** TTL da trava por ciclo de poll. */
     static final Duration LOCK_TTL = Duration.ofSeconds(30);
 
@@ -34,6 +51,10 @@ public class OutboxPublisher {
 
     private final JobLockService jobLockService;
     private final List<OutboxConsumer> consumers;
+
+    /** Permite liberar a trava somente depois do commit da transação do lote. */
+    @Inject
+    TransactionSynchronizationRegistry transactionSynchronizationRegistry;
 
     /** Owner único por instância, gerado na inicialização. */
     private final String ownerId = UUID.randomUUID().toString();
@@ -45,18 +66,14 @@ public class OutboxPublisher {
 
     /**
      * Varre eventos pendentes a cada 5 s.
-     * Só executa se conseguir adquirir a trava distribuída.
+     * Cada evento tenta adquirir a trava do seu agregado. Eventos cujo agregado
+     * esteja sendo processado por outra réplica ficam pendentes para o próximo
+     * ciclo.
      */
     @Scheduled(every = "5s", identity = JOB_NAME)
+    @Transactional
     public void poll() {
-        if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
-            return; // outra instância está processando
-        }
-        try {
-            processNextBatch();
-        } finally {
-            jobLockService.release(JOB_NAME, ownerId);
-        }
+        processNextBatch();
     }
 
     @Transactional
@@ -68,9 +85,42 @@ public class OutboxPublisher {
 
         LOG.debugf("Processando %d eventos do outbox.", pending.size());
 
-        for (OutboxEvent event : pending) {
-            dispatchEvent(event);
+        Set<String> acquiredLocks = new LinkedHashSet<>();
+        Set<String> unavailableLocks = new LinkedHashSet<>();
+        try {
+            for (OutboxEvent event : pending) {
+                processEvent(event, acquiredLocks, unavailableLocks);
+            }
+        } finally {
+            releaseAfterTransaction(acquiredLocks);
         }
+    }
+
+    /**
+     * Processa um evento somente enquanto sua trava de agregado estiver detida
+     * por esta instância. A trava é compartilhada por todos os eventos do mesmo
+     * agregado encontrados neste lote.
+     */
+    private void processEvent(
+            OutboxEvent event,
+            Set<String> acquiredLocks,
+            Set<String> unavailableLocks
+    ) {
+        String lockName = domainLockName(event);
+        if (unavailableLocks.contains(lockName)) {
+            return;
+        }
+
+        if (!acquiredLocks.contains(lockName)
+                && !jobLockService.acquire(lockName, ownerId, LOCK_TTL)) {
+            unavailableLocks.add(lockName);
+            LOG.debugf("Lock do agregado detido por outra instância: lock=%s event=%s",
+                    lockName, event.id);
+            return;
+        }
+
+        acquiredLocks.add(lockName);
+        dispatchEvent(event);
     }
 
     private void dispatchEvent(OutboxEvent event) {
@@ -104,5 +154,79 @@ public class OutboxPublisher {
 
     private void markProcessed(OutboxEvent event) {
         event.processedAt = Instant.now();
+    }
+
+    /**
+     * Adia a liberação para depois do fim da transação que marcou os eventos.
+     * Sem isso, uma réplica poderia readquirir a trava enquanto
+     * {@code processed_at} ainda não foi confirmado no banco.
+     */
+    private void releaseAfterTransaction(Set<String> lockNames) {
+        if (lockNames.isEmpty()) {
+            return;
+        }
+
+        TransactionSynchronizationRegistry registry = transactionSynchronizationRegistry;
+        if (registry != null) {
+            int status = registry.getTransactionStatus();
+            if (status == Status.STATUS_ACTIVE || status == Status.STATUS_MARKED_ROLLBACK) {
+                List<String> locksToRelease = List.copyOf(lockNames);
+                try {
+                    registry.registerInterposedSynchronization(new jakarta.transaction.Synchronization() {
+                        @Override
+                        public void beforeCompletion() {
+                            // Nada a fazer antes do commit.
+                        }
+
+                        @Override
+                        public void afterCompletion(int completionStatus) {
+                            releaseLocks(locksToRelease);
+                        }
+                    });
+                    return;
+                } catch (IllegalStateException e) {
+                    LOG.warnf(e, "Não foi possível registrar liberação pós-transação das travas do outbox");
+                }
+            }
+        }
+
+        // Fallback para invocações fora do CDI/transação, útil para testes e shutdown.
+        releaseLocks(lockNames);
+    }
+
+    private void releaseLocks(Iterable<String> lockNames) {
+        for (String lockName : lockNames) {
+            jobLockService.release(lockName, ownerId);
+        }
+    }
+
+    /**
+     * Gera a chave estável da trava para o agregado do evento.
+     *
+     * <p>Os valores usuais permanecem legíveis para facilitar operação. Quando
+     * a combinação ultrapassa o limite do banco, um digest SHA-256 mantém a
+     * chave estável e dentro de {@code job_locks.job_name}.</p>
+     */
+    static String domainLockName(OutboxEvent event) {
+        Objects.requireNonNull(event, "event");
+        return domainLockName(event.aggregateType, event.aggregateId);
+    }
+
+    static String domainLockName(String aggregateType, String aggregateId) {
+        Objects.requireNonNull(aggregateType, "aggregateType");
+        Objects.requireNonNull(aggregateId, "aggregateId");
+
+        String readableName = DOMAIN_LOCK_PREFIX + aggregateType + ":" + aggregateId;
+        if (readableName.length() <= MAX_LOCK_NAME_LENGTH) {
+            return readableName;
+        }
+
+        byte[] input = (aggregateType + "\u0000" + aggregateId).getBytes(StandardCharsets.UTF_8);
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(input);
+            return DOMAIN_LOCK_PREFIX + "sha256:" + HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 não disponível", e);
+        }
     }
 }

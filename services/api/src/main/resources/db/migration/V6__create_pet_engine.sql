@@ -1,5 +1,5 @@
 -- =============================================================================
--- V5 — Motor do pet: reserva, estado emocional, alimentações, porção de
+-- V6 — Motor do pet: reserva, estado emocional, alimentações, porção de
 --       referência e cursor de apresentação (PET-01, PET-06).
 -- Compatível com PostgreSQL (produção) e H2 no modo PostgreSQL (testes).
 -- Não recria pets; amplia colunas e devolve valores iniciais aos registros

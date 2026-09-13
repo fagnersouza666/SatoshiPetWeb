@@ -72,7 +72,10 @@ class AddressWebSocketTest {
 
     @Test
     void recebeSnapshotAoReconectarComCursor() throws Exception {
-        URI webSocketUri = wsUriForAddress(TEST_ADDRESS);
+        // Canal isolado: o endereço compartilhado dos outros testes pode ter
+        // eventos PET_/BITCOIN_ no ring buffer, e o replay devolve EVENT.
+        URI webSocketUri = wsUriForAddress("bcrt1qreconnect" + java.util.UUID.randomUUID()
+                .toString().replace("-", "").substring(0, 20));
 
         CompletableFuture<String> reconnectSnapshot = new CompletableFuture<>();
 

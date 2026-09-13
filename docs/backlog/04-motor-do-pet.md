@@ -21,7 +21,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §16.2, §6.1  
 **Critérios de aceite:** CA-002  
 **Dependências:** FUND-02, CONTA-02  
-**Notas técnicas:** Colunas do motor em `V5__create_pet_engine.sql` (reserva NUMERIC, estado emocional, apresentação ovo/criatura, fonte alimentar CC-05). `Pet.create` inicia ovo, reserva 0 e fonte = criador.  
+**Notas técnicas:** Colunas do motor em `V6__create_pet_engine.sql` (reserva NUMERIC, estado emocional, apresentação ovo/criatura, fonte alimentar CC-05). `Pet.create` inicia ovo, reserva 0 e fonte = criador.  
 
 ---
 
@@ -32,7 +32,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §6.2, **CC-05**  
 **Critérios de aceite:** CA-002 (estado compartilhado)  
 **Dependências:** PET-01, DCA-15 (porção referência)  
-**Notas técnicas:** Conta secundária vê "Sua sugestão" vs "Porção 24h do pet". Histórico de porção em `pet_reference_portions` (`V5__create_pet_engine.sql`). Resolução via `PetReferencePortionPort` / `PersistentPetReferencePortionPort`: porção vigente é da fonte alimentar ativa (criador, depois vínculo mais antigo); snapshot de outra conta é histórico imutável e não atualiza `lastPositive*` nem vira current enquanto a fonte original estiver vinculada; sem snapshot da nova fonte (após troca ou sem vínculos) usa `lastPositivePortionSats` com a conta que gerou essa porção (CA-055); sem porção positiva da fonte ativa devolve vazio (CC-11 / CA-026). `refreshFoodSource` não reescreve snapshots nem transfere direitos de nome.
+**Notas técnicas:** Conta secundária vê "Sua sugestão" vs "Porção 24h do pet". Histórico de porção em `pet_reference_portions` (`V6__create_pet_engine.sql`). Resolução via `PetReferencePortionPort` / `PersistentPetReferencePortionPort`: porção vigente é da fonte alimentar ativa (criador, depois vínculo mais antigo); snapshot de outra conta é histórico imutável e não atualiza `lastPositive*` nem vira current enquanto a fonte original estiver vinculada; sem snapshot da nova fonte (após troca ou sem vínculos) usa `lastPositivePortionSats` com a conta que gerou essa porção (CA-055); sem porção positiva da fonte ativa devolve vazio (CC-11 / CA-026). `refreshFoodSource` não reescreve snapshots nem transfere direitos de nome.
 
 ---
 
@@ -75,7 +75,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §7.2, §9.3  
 **Critérios de aceite:** CA-017, CA-029, CA-030  
 **Dependências:** PET-03, BTC-05  
-**Notas técnicas:** Tabela `pet_feedings` em `V5__create_pet_engine.sql`; UNIQUE `(pet_id, logical_receipt_id)` (CA-017). `PetEngine` (`PetLifecyclePort`) persiste LIVE idempotente; `onReceiptRevised` recalcula com `feeding.portionSats` (snapshot imutável, não a porção vigente). Invalidação marca `INVALIDATED` e devolve `durationHours` efetivas sem apagar a linha. Sem porção positiva (CC-11) não cria alimentação.  
+**Notas técnicas:** Tabela `pet_feedings` em `V6__create_pet_engine.sql`; UNIQUE `(pet_id, logical_receipt_id)` (CA-017). `PetEngine` (`PetLifecyclePort`) persiste LIVE idempotente; `onReceiptRevised` recalcula com `feeding.portionSats` (snapshot imutável, não a porção vigente). Invalidação marca `INVALIDATED` e devolve `durationHours` efetivas sem apagar a linha. Sem porção positiva (CC-11) não cria alimentação.  
 
 ---
 
@@ -171,7 +171,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §9.5, **CC-15**  
 **Critérios de aceite:** CA-034, CA-035  
 **Dependências:** FUND-05, PWA  
-**Notas técnicas:** Visitante usa cursor local; sincronizar entre dispositivos da mesma conta. Persistência em `presentation_cursors` (`V5__create_pet_engine.sql`), um cursor por conta. API autenticada: `PetPresentationService` + `PetAccountResource` (`GET /api/v1/account/pet` snapshot compartilhado + fila/stats, `GET /api/v1/account/pet/presentation-queue`, `POST /api/v1/account/pet/presentation/skip` com CSRF). Fonte: outbox `Pet` com `PET_FEEDING_APPLIED|REVISED` só se `PetFeeding` LIVE `presentable=true` e não `INVALIDATED` (id de REVISED inclui amount/duration atuais), mais `PET_BORN|PET_REAPPEARED`; `createdAt >= boundAt` da conta. Skip avança `lastPresentedEventId` até o último elegível e **não** chama `creditDelta`. Contrato: [`docs/contratos/pet-apresentacao-e-stats.md`](../contratos/pet-apresentacao-e-stats.md).
+**Notas técnicas:** Visitante usa cursor local; sincronizar entre dispositivos da mesma conta. Persistência em `presentation_cursors` (`V6__create_pet_engine.sql`), um cursor por conta. API autenticada: `PetPresentationService` + `PetAccountResource` (`GET /api/v1/account/pet` snapshot compartilhado + fila/stats, `GET /api/v1/account/pet/presentation-queue`, `POST /api/v1/account/pet/presentation/skip` com CSRF). Fonte: outbox `Pet` com `PET_FEEDING_APPLIED|REVISED` só se `PetFeeding` LIVE `presentable=true` e não `INVALIDATED` (id de REVISED inclui amount/duration atuais), mais `PET_BORN|PET_REAPPEARED`; `createdAt >= boundAt` da conta. Skip avança `lastPresentedEventId` até o último elegível e **não** chama `creditDelta`. Contrato: [`docs/contratos/pet-apresentacao-e-stats.md`](../contratos/pet-apresentacao-e-stats.md).
 
 ---
 

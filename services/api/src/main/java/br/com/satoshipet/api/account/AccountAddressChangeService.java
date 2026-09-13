@@ -84,9 +84,9 @@ public class AccountAddressChangeService {
                 AccountAddressBinding.findByAccountAndCanonical(account, canonical);
 
         Address destination = priorBinding.map(b -> b.address)
-                .or(() -> Address.findByCanonical(canonical))
+                .or(() -> Address.findByNetworkAndCanonical("mainnet", canonical))
                 .orElseGet(() -> {
-                    Address created = Address.create(canonical, now);
+                    Address created = Address.create(canonical, "mainnet", now);
                     created.persist();
                     return created;
                 });

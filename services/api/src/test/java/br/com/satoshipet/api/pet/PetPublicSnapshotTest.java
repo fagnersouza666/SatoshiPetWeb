@@ -110,6 +110,13 @@ class PetPublicSnapshotTest {
         assertNull(snapshot.operationalLabel());
     }
 
+    @Test
+    void fromCanonicalSemTextoDevolveSnapshotVazio() {
+        assertEquals(PetPublicSnapshot.empty(), PetPublicSnapshot.fromCanonical(null));
+        assertEquals(PetPublicSnapshot.empty(), PetPublicSnapshot.fromCanonical(""));
+        assertEquals(PetPublicSnapshot.empty(), PetPublicSnapshot.fromCanonical("   "));
+    }
+
     private static Pet novoOvo(String name) {
         Instant now = Instant.parse("2026-09-13T12:00:00Z");
         Address address = Address.create("bcrt1qsnapshot0000000000000000000001", now);
