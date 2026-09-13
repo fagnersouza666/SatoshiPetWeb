@@ -113,6 +113,9 @@ public class AccountAddressBinding extends PanacheEntityBase {
     /** Marca o vínculo como desfeito. Idempotente. */
     public void unbind(Instant now) {
         Objects.requireNonNull(now, "now");
+        if (now.isBefore(this.boundAt)) {
+            throw new IllegalArgumentException("unboundAt não pode anteceder boundAt");
+        }
         if (this.unboundAt == null) {
             this.unboundAt = now;
             this.primary = false;

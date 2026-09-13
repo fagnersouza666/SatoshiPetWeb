@@ -12,7 +12,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -26,9 +25,6 @@ import java.util.Optional;
 public class RegistrationService {
 
     private static final Logger LOG = Logger.getLogger(RegistrationService.class);
-
-    /** Janela de troca de endereço após o primeiro vínculo (CA-004). */
-    static final Duration ADDRESS_CHANGE_WINDOW = Duration.ofHours(72);
 
     private final MagicLinkTokenService tokenService;
     private final SessionService sessionService;
@@ -102,7 +98,6 @@ public class RegistrationService {
 
         // 6. Cria as entidades atomicamente
         Account account = Account.create(email, tz, "pt-BR", now);
-        account.addressChangeDeadline = now.plus(ADDRESS_CHANGE_WINDOW);
         account.persist();
 
         Address address = Address.findByCanonical(canonical)

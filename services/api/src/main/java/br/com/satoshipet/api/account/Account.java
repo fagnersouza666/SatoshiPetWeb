@@ -7,6 +7,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
@@ -20,6 +21,9 @@ import java.util.UUID;
         }
 )
 public class Account extends PanacheEntityBase {
+
+    /** Janela absoluta permitida para troca do endereço inicial. */
+    public static final Duration ADDRESS_CHANGE_WINDOW = Duration.ofHours(72);
 
     @Id
     @Column(name = "id", nullable = false, updatable = false)
@@ -45,7 +49,7 @@ public class Account extends PanacheEntityBase {
      * Prazo até o qual a troca de endereço ainda é permitida.
      * Nulo antes de qualquer vínculo; imutável após as 72h da primeira vinculação (CA-004).
      */
-    @Column(name = "address_change_deadline")
+    @Column(name = "address_change_deadline", updatable = false)
     public Instant addressChangeDeadline;
 
     protected Account() {
@@ -65,6 +69,7 @@ public class Account extends PanacheEntityBase {
         account.timezone = timezone;
         account.locale = locale;
         account.createdAt = now;
+        account.addressChangeDeadline = now.plus(ADDRESS_CHANGE_WINDOW);
         return account;
     }
 
