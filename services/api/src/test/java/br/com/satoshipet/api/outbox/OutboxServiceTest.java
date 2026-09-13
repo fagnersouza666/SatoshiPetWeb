@@ -5,11 +5,15 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @QuarkusTest
 class OutboxServiceTest {
@@ -85,8 +89,51 @@ class OutboxServiceTest {
         boolean hasC = pending.stream().anyMatch(e -> idC.equals(e.id));
         boolean hasB = pending.stream().anyMatch(e -> idB.equals(e.id));
 
-        org.junit.jupiter.api.Assertions.assertTrue(hasA, "idA deve estar pendente");
-        org.junit.jupiter.api.Assertions.assertTrue(hasC, "idC deve estar pendente");
-        org.junit.jupiter.api.Assertions.assertFalse(hasB, "idB não deve estar pendente");
+        assertTrue(hasA, "idA deve estar pendente");
+        assertTrue(hasC, "idC deve estar pendente");
+        assertFalse(hasB, "idB não deve estar pendente");
+    }
+
+    @Test
+    @Transactional
+    void findPendingOrdenaPorIdQuandoCreatedAtEmpata() {
+        Instant createdAt = Instant.parse("2000-01-01T00:00:00Z");
+        UUID lowerId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID higherId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+
+        OutboxEvent higher = OutboxEvent.createWithId(
+                higherId, "Test", higherId.toString(), "TEST_EVENT", "{}", createdAt, null);
+        OutboxEvent lower = OutboxEvent.createWithId(
+                lowerId, "Test", lowerId.toString(), "TEST_EVENT", "{}", createdAt, null);
+        higher.persist();
+        lower.persist();
+
+        List<OutboxEvent> pending = OutboxEvent.findPending(100);
+        int lowerIndex = pending.indexOf(lower);
+        int higherIndex = pending.indexOf(higher);
+
+        assertTrue(lowerIndex >= 0, "Evento com menor id deve estar pendente");
+        assertTrue(higherIndex >= 0, "Evento com maior id deve estar pendente");
+        assertTrue(lowerIndex < higherIndex,
+                "Eventos com o mesmo createdAt devem ser ordenados por id ASC");
+    }
+
+    @Test
+    @Transactional
+    void findPendingLimitaQuantidadeRetornada() {
+        outboxService.save(UUID.randomUUID(), "Test", UUID.randomUUID().toString(),
+                "TEST_EVENT", "{}", null);
+        outboxService.save(UUID.randomUUID(), "Test", UUID.randomUUID().toString(),
+                "TEST_EVENT", "{}", null);
+
+        List<OutboxEvent> pending = OutboxEvent.findPending(2);
+
+        assertEquals(2, pending.size(), "Consulta deve respeitar o tamanho do lote");
+    }
+
+    @Test
+    void findPendingRejeitaLimiteNaoPositivo() {
+        assertThrows(IllegalArgumentException.class, () -> OutboxEvent.findPending(0));
+        assertThrows(IllegalArgumentException.class, () -> OutboxEvent.findPending(-1));
     }
 }
