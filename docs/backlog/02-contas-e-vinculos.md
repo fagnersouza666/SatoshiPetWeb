@@ -175,7 +175,7 @@ O contrato de solicitação está em [docs/contratos/magic-link.md](../contratos
 
 ## Definition of Done (épico)
 
-- [ ] CA-001 a CA-010 verificáveis em ambiente de teste
-- [ ] Magic link e recuperação funcionam sem senha tradicional
-- [ ] Troca atômica CC-03 com rollback em falha
-- [ ] Admin não consegue trocar endereço após 72h
+- [x] CA-001 a CA-010 verificáveis em ambiente de teste (REST + unit tests; PWA auth flows com Vitest)
+- [x] Magic link e recuperação funcionam sem senha tradicional (API + PWA; stubs de e-mail em dev)
+- [x] Troca atômica CC-03 com rollback em falha (`AccountAddressChangeService` + testes)
+- [x] Admin não consegue trocar endereço após 72h (regra no serviço; sem bypass admin neste recorte)

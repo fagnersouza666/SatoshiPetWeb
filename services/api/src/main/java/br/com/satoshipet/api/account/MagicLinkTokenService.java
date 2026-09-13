@@ -36,6 +36,24 @@ public class MagicLinkTokenService {
     }
 
     /**
+     * Verifica se o token é válido no instante informado sem consumir.
+     * Usado no fluxo de verify para checar antes de decidir se há conta ou não.
+     *
+     * @param rawToken   token bruto do magic link
+     * @param checkedAt  instante de verificação
+     * @return token válido, ou vazio se inválido/expirado/já consumido
+     */
+    public Optional<MagicLinkToken> peekByRawToken(String rawToken, Instant checkedAt) {
+        Objects.requireNonNull(checkedAt, "checkedAt");
+        String tokenHash = hasher.hash(rawToken);
+        Optional<MagicLinkToken> candidate = repository.findByTokenHash(tokenHash);
+        if (candidate.isEmpty() || !candidate.get().isUsableAt(checkedAt)) {
+            return Optional.empty();
+        }
+        return candidate;
+    }
+
+    /**
      * Consome o link uma única vez. Link expirado, inexistente ou já consumido
      * não revela qual estado falhou e não cria qualquer escrita de conta.
      */

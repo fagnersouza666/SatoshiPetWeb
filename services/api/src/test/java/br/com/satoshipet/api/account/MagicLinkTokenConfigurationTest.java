@@ -12,22 +12,36 @@ class MagicLinkTokenConfigurationTest {
 
     @Test
     void acceptsConfiguredPositiveTtl() {
-        MagicLinkTokenConfiguration configuration = () -> Optional.of(Duration.ofMinutes(5));
+        MagicLinkTokenConfiguration configuration = stub(Optional.of(Duration.ofMinutes(5)));
 
         assertEquals(Duration.ofMinutes(5), configuration.requiredTtl());
     }
 
     @Test
     void rejectsMissingTtlBecauseNoProductDefaultWasChosen() {
-        MagicLinkTokenConfiguration configuration = Optional::<Duration>empty;
+        MagicLinkTokenConfiguration configuration = stub(Optional.empty());
 
         assertThrows(IllegalStateException.class, configuration::requiredTtl);
     }
 
     @Test
     void rejectsNonPositiveTtl() {
-        MagicLinkTokenConfiguration configuration = () -> Optional.of(Duration.ZERO);
+        MagicLinkTokenConfiguration configuration = stub(Optional.of(Duration.ZERO));
 
         assertThrows(IllegalStateException.class, configuration::requiredTtl);
+    }
+
+    private static MagicLinkTokenConfiguration stub(Optional<Duration> ttl) {
+        return new MagicLinkTokenConfiguration() {
+            @Override
+            public String baseUrl() {
+                return "http://localhost:4200";
+            }
+
+            @Override
+            public Optional<Duration> ttl() {
+                return ttl;
+            }
+        };
     }
 }
