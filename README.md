@@ -185,6 +185,14 @@ O pipeline em `.github/workflows/ci.yml` executa automaticamente em push para
 Em pushes para `main`, as imagens são publicadas no GitHub Container Registry
 (`ghcr.io`).
 
+Quando a instalação ou um gate falha, o job publica um artefato
+`relatorio-falha-*` com a saída do comando; o job da API também inclui os
+relatórios Surefire/Failsafe gerados pelo Maven. No build de imagens, o artefato
+contém somente contexto seguro da execução, enquanto o diagnóstico detalhado
+permanece nos logs do Actions. Os artefatos só são publicados após falha e não
+incluem variáveis de ambiente, credenciais ou outros segredos. A falha do job
+permanece bloqueante.
+
 ---
 
 ## Produção
