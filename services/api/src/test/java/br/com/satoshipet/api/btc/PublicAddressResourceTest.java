@@ -1,0 +1,190 @@
+package br.com.satoshipet.api.btc;
+
+import br.com.satoshipet.api.account.Address;
+import br.com.satoshipet.api.support.bitcoin.BitcoinTestAddresses;
+import br.com.satoshipet.api.support.bitcoin.BitcoinTransactionFixture;
+import io.quarkus.test.junit.QuarkusTest;
+import io.restassured.http.ContentType;
+import jakarta.inject.Inject;
+import io.quarkus.narayana.jta.QuarkusTransaction;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
+
+import static io.restassured.RestAssured.given;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.startsWith;
+
+/**
+ * Testes de integração para {@link PublicAddressResource}.
+ *
+ * <p>Valida que somente campos públicos são retornados (CA-009) e que
+ * a resposta tem o formato esperado.</p>
+ *
+ * <p>O endereço de fixture é criado em {@link #setup()} (transação commitada)
+ * e removido em {@link #teardown()} (transação commitada), garantindo que
+ * a chamada REST veja dados persistidos.</p>
+ */
+@QuarkusTest
+class PublicAddressResourceTest {
+
+    static final String FIXTURE_ADDR = BitcoinTransactionFixture.ADDRESS.toLowerCase();
+
+    @Inject
+    StubBitcoinIndexer stub;
+
+    @BeforeEach
+    void setup() {
+        stub.reset();
+        QuarkusTransaction.requiringNew().run(() -> {
+            Address.findByCanonical(FIXTURE_ADDR).orElseGet(() -> {
+                Address a = Address.create(FIXTURE_ADDR, Instant.now());
+                a.persist();
+                return a;
+            });
+        });
+    }
+
+    @AfterEach
+    void teardown() {
+        QuarkusTransaction.requiringNew().run(() -> {
+            Address.findByCanonical(FIXTURE_ADDR).ifPresent(address -> {
+                LogicalReceipt.find("address", address).list()
+                        .forEach(r -> ((LogicalReceipt) r).delete());
+                BitcoinTransaction.find("address", address).list()
+                        .forEach(t -> ((BitcoinTransaction) t).delete());
+                address.delete();
+            });
+        });
+        stub.reset();
+    }
+
+    // -------------------------------------------------------------------------
+    // Endereço não monitorado → 404
+    // -------------------------------------------------------------------------
+
+    @Test
+    void enderecoNaoMonitoradoRetorna404() {
+        // Usa endereço válido mas que não está no banco
+        given()
+                .when().get("/api/v1/public/addresses/" + BitcoinTestAddresses.MAINNET_UNMONITORED)
+                .then()
+                .statusCode(404);
+    }
+
+    // -------------------------------------------------------------------------
+    // Endereço inválido → 400
+    // -------------------------------------------------------------------------
+
+    @Test
+    void enderecoInvalidoRetorna400() {
+        given()
+                .when().get("/api/v1/public/addresses/not-a-bitcoin-address")
+                .then()
+                .statusCode(400);
+    }
+
+    // -------------------------------------------------------------------------
+    // Endereço monitorado → 200 com dados públicos
+    // -------------------------------------------------------------------------
+
+    @Test
+    void enderecoMonitoradoRetorna200ComCamposPublicos() {
+        given()
+                .accept(ContentType.JSON)
+                .when().get("/api/v1/public/addresses/" + FIXTURE_ADDR)
+                .then()
+                .statusCode(200)
+                .body("address",       equalTo(FIXTURE_ADDR))
+                .body("network",       notNullValue())
+                .body("confirmedSats", notNullValue())
+                .body("pendingSats",   notNullValue())
+                .body("qrData",        startsWith("bitcoin:"))
+                .body("explorerUrl",   notNullValue());
+    }
+
+    @Test
+    void respostaNaoContemCamposPrivados() {
+        String json = given()
+                .accept(ContentType.JSON)
+                .when().get("/api/v1/public/addresses/" + FIXTURE_ADDR)
+                .then()
+                .statusCode(200)
+                .extract().asString();
+
+        org.junit.jupiter.api.Assertions.assertFalse(json.contains("\"accountId\""),
+                "accountId não deve aparecer na resposta pública");
+        org.junit.jupiter.api.Assertions.assertFalse(json.contains("\"petId\""),
+                "petId não deve aparecer na resposta pública");
+        org.junit.jupiter.api.Assertions.assertFalse(json.contains("\"bindingId\""),
+                "bindingId não deve aparecer na resposta pública");
+        org.junit.jupiter.api.Assertions.assertFalse(json.contains("\"email\""),
+                "email não deve aparecer na resposta pública");
+        org.junit.jupiter.api.Assertions.assertFalse(json.contains("\"logicalReceiptId\""),
+                "logicalReceiptId não deve aparecer na resposta pública");
+    }
+
+    @Test
+    void qrDataTemFormatoBitcoinUri() {
+        given()
+                .accept(ContentType.JSON)
+                .when().get("/api/v1/public/addresses/" + FIXTURE_ADDR)
+                .then()
+                .statusCode(200)
+                .body("qrData", equalTo("bitcoin:" + FIXTURE_ADDR));
+    }
+
+    @Test
+    void explorerUrlContemEnderecoNaUrl() {
+        given()
+                .accept(ContentType.JSON)
+                .when().get("/api/v1/public/addresses/" + FIXTURE_ADDR)
+                .then()
+                .statusCode(200)
+                .body("explorerUrl", containsString(FIXTURE_ADDR));
+    }
+
+    @Test
+    void historicoTransacoesVazioQuandoNaoHaTxs() {
+        given()
+                .accept(ContentType.JSON)
+                .when().get("/api/v1/public/addresses/" + FIXTURE_ADDR)
+                .then()
+                .statusCode(200)
+                .body("recentTransactions", hasSize(0))
+                .body("transactionCount",   equalTo(0));
+    }
+
+    // -------------------------------------------------------------------------
+    // Canonicalização de bech32 uppercase
+    // -------------------------------------------------------------------------
+
+    @Test
+    void bech32UppercaseECanonicalizadoParaMinuscula() {
+        given()
+                .accept(ContentType.JSON)
+                .when().get("/api/v1/public/addresses/" + FIXTURE_ADDR.toUpperCase())
+                .then()
+                .statusCode(200)
+                .body("address", equalTo(FIXTURE_ADDR));
+    }
+
+    // -------------------------------------------------------------------------
+    // Network detection correta para endereço regtest
+    // -------------------------------------------------------------------------
+
+    @Test
+    void regtestEnderecoRetornaNetworkRegtest() {
+        given()
+                .accept(ContentType.JSON)
+                .when().get("/api/v1/public/addresses/" + FIXTURE_ADDR)
+                .then()
+                .statusCode(200)
+                .body("network", equalTo("regtest"));
+    }
+}

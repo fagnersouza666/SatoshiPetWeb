@@ -14,7 +14,7 @@ import java.util.List;
 public final class BitcoinTransactionFixture {
 
     public static final String NETWORK = "regtest";
-    public static final String ADDRESS = "bcrt1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh";
+    public static final String ADDRESS = BitcoinTestAddresses.REGTEST_BECH32;
     public static final String TXID = "a1".repeat(32);
     public static final String BLOCK_HASH = "b2".repeat(32);
     public static final int BLOCK_HEIGHT = 101;

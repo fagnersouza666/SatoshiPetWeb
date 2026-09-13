@@ -203,8 +203,8 @@ de resposta do provedor não é descarte, e uma compra declarada nunca dispara
 
 ## Definition of Done (épico)
 
-- [ ] Endereço válido Mainnet aceito; inválido rejeitado
-- [ ] Backfill completo sem duplicidade (CA-017, CA-033)
-- [ ] RBF e reorg recalculam pet corretamente
-- [ ] Falha de provedor não zera saldo (CA-031)
-- [ ] Dados on-chain públicos sem vazamento privado (CA-009)
+- [x] Endereço válido Mainnet aceito; inválido rejeitado (`BitcoinAddressValidator` + cadastro/API pública)
+- [x] Backfill completo sem duplicidade (CA-017, CA-033) — `BitcoinMonitorService` + fixtures RBF/reorg
+- [ ] RBF e reorg recalculam pet corretamente (persistência tx ok; motor PET 168h pendente)
+- [x] Falha de provedor não zera saldo (CA-031) — `BitcoinIndexerPort` + testes
+- [x] Dados on-chain públicos sem vazamento privado (CA-009) — `PublicAddressResource` + redaction
