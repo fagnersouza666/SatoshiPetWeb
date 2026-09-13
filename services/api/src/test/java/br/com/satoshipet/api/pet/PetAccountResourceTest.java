@@ -71,6 +71,16 @@ class PetAccountResourceTest {
     }
 
     @Test
+    void statsSemSessaoRetorna401() {
+        given()
+                .when()
+                .get("/api/v1/account/pet/stats")
+                .then()
+                .statusCode(401)
+                .body("code", equalTo("unauthorized"));
+    }
+
+    @Test
     void ca034HttpTresComemoracoesAposRegistro() {
         RegisteredAccount registered = registerUniqueAccount("ca034-http");
         feedLiveReceipts(registered.accountId(), 3);

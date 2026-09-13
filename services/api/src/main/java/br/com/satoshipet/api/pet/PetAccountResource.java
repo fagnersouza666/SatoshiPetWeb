@@ -27,6 +27,9 @@ public class PetAccountResource {
     @Inject
     PetPresentationService presentationService;
 
+    @Inject
+    PetStatsService statsService;
+
     /**
      * Fila de comemorações ainda não apresentadas para a conta autenticada.
      *
@@ -55,6 +58,21 @@ public class PetAccountResource {
         }
         Account account = authenticatedSession.get().account;
         return Response.ok(presentationService.skip(account)).build();
+    }
+
+    /**
+     * Estatísticas do pet da conta (idade desde o nascimento original, CC-21).
+     *
+     * <p>GET /api/v1/account/pet/stats</p>
+     */
+    @GET
+    @Path("/stats")
+    public Response stats() {
+        if (!authenticatedSession.isAuthenticated()) {
+            return unauthorized();
+        }
+        Account account = authenticatedSession.get().account;
+        return Response.ok(statsService.stats(account)).build();
     }
 
     private Response unauthorized() {

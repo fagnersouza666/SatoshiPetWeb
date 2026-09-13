@@ -196,6 +196,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §14.3, **CC-21**  
 **Critérios de aceite:** — (dashboard PWA)  
 **Dependências:** PET-05, PET-08  
+**Notas técnicas:** `GET /api/v1/account/pet/stats` via `PetStatsService`. `bornAt` ISO ou null; `ageHours` decimal desde o nascimento original (não zera no ovo). `timeInStateHours` reconstitui ALIMENTADO/PENSANDO/CHATEADO/FAMINTO/CRITICO/HIBERNANDO pelos `occurredAt` de `PET_STATE_CHANGED|PET_BORN|PET_REAPPEARED|PET_RETURNED_TO_EGG` + intervalo aberto até `now`/`lastEvaluatedAt` (string `BigDecimal`, CC-10). `reconstructedPeriod` / `observedPeriod` conforme origem `HISTORICAL_RECONSTRUCTION` / `LIVE` em `PetFeeding`. Sem petId.
 
 ---
 
@@ -206,6 +207,7 @@ Motor compartilhado de alimentação, reserva (máx 168h), estados emocionais, n
 **Regras de negócio:** §7, §2 princípio 5  
 **Critérios de aceite:** CA-025  
 **Dependências:** PET-04, PET-11  
+**Notas técnicas:** `PetTickJob` (`@Scheduled(every = "60s", identity = "pet-tick")`) adquire `JobLockService` lock `pet-tick` TTL 120s e chama `petLifecycle.tick(pet.id, Instant.now())` para cada `Pet.listAll()`. Falha em um pet loga e continua. Relógio do servidor (UTC), nunca do cliente. Scheduler desligado em testes.
 
 ---
 
