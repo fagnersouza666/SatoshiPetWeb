@@ -32,10 +32,13 @@
     }
 
     # Quarkus health/metrics (restrito por IP em produção)
-    handle /q/health* {
-        @interno {
-            remote_ip 127.0.0.1/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
-        }
+    @observabilidade {
+        path /q/health* /q/metrics*
+    }
+    @interno {
+        remote_ip 127.0.0.1/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+    }
+    handle @observabilidade {
         reverse_proxy @interno api:8080
         respond "Acesso negado" 403
     }
