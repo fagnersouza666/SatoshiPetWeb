@@ -135,7 +135,17 @@
             </exclusions>
         </dependency>
 
-        <!-- Testcontainers — PostgreSQL para testes de integração futuros -->
+        <!-- Testcontainers — integrações com PostgreSQL e MinIO -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>testcontainers-postgresql</artifactId>
