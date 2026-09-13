@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
@@ -30,6 +31,7 @@ class PetEngineEggTest {
     private static final long FIVE_THOUSAND = 5_000L;
     private static final BigDecimal FORTY_EIGHT_HOURS = hours("48");
     private static final BigDecimal TWENTY_FOUR_HOURS = hours("24");
+    private static final BigDecimal SIX_HOURS = hours("6");
 
     @Inject
     PetLifecyclePort lifecycle;
@@ -208,6 +210,55 @@ class PetEngineEggTest {
         assertEquals(NOW, pet.bornAt);
         assertEquals(NOW, pet.lastReturnedToEggAt);
         assertEquals(ArtworkStatus.NONE, pet.artworkStatus);
+    }
+
+    @Test
+    @Transactional
+    void pet13ReorgDaUltimaValidaNaCriaturaVoltaAoOvoEMantemHoras() {
+        Fixture fixture = persistBornCreature("pet13-reorg");
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, true, NOW);
+        Pet afterConfirm = Pet.findById(fixture.pet.id);
+        assertEquals(0, afterConfirm.reserveHours.compareTo(SIX_HOURS));
+        assertEquals(0, singleFeeding(afterConfirm).durationHours.compareTo(SIX_HOURS));
+
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, false, NOW);
+
+        Pet pet = Pet.findById(fixture.pet.id);
+        PetFeeding feeding = singleFeeding(pet);
+        assertEquals(FeedingStatus.PROVISIONAL, feeding.status);
+        assertEquals(0, feeding.durationHours.compareTo(SIX_HOURS),
+                "criatura já creditou na mempool — reorg não desfaz as horas");
+        assertEquals(0, pet.reserveHours.compareTo(SIX_HOURS));
+        assertEquals(PetPresentation.EGG, pet.presentation);
+        assertEquals(NOW, pet.bornAt);
+        assertEquals(NOW, pet.lastReturnedToEggAt);
+    }
+
+    @Test
+    @Transactional
+    void reorgDaValidaNoOvoDescreditaHorasEZeraDuracao() {
+        Fixture fixture = persistEgg("reorg-egg");
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, true, NOW);
+        lifecycle.onBalanceKnown(fixture.pet.id, FIVE_THOUSAND, 0L, NOW);
+        Pet afterBirth = Pet.findById(fixture.pet.id);
+        assertEquals(NOW, afterBirth.bornAt);
+        assertEquals(ArtworkStatus.PENDING, afterBirth.artworkStatus);
+        assertEquals(PetPresentation.EGG, afterBirth.presentation);
+        assertEquals(0, afterBirth.reserveHours.compareTo(SIX_HOURS));
+
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, false, NOW);
+
+        Pet pet = Pet.findById(fixture.pet.id);
+        PetFeeding feeding = singleFeeding(pet);
+        assertEquals(FeedingStatus.PROVISIONAL, feeding.status);
+        assertEquals(0, feeding.durationHours.compareTo(BigDecimal.ZERO.setScale(ReserveMath.SCALE)));
+        assertFalse(feeding.presentable);
+        assertEquals(0, pet.reserveHours.compareTo(BigDecimal.ZERO.setScale(ReserveMath.SCALE)),
+                "ovo descredita as horas adicionadas na confirmação");
+        assertEquals(PetPresentation.EGG, pet.presentation);
+        assertEquals(NOW, pet.bornAt);
     }
 
     @Test
