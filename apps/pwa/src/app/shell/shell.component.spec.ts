@@ -89,6 +89,22 @@ describe('ShellComponent', () => {
     expect(itens.length).toBe(2);
   });
 
+  it('deve apontar a navegação para rotas existentes do shell', () => {
+    const links = fixture.nativeElement.querySelectorAll('.bottom-nav__item');
+
+    expect(links[0].getAttribute('href')).toBe('/conta');
+    expect(links[1].getAttribute('href')).toBe('/');
+    expect(links[1].textContent?.trim()).toBe('Início');
+    expect(links[1].getAttribute('aria-label')).toBe('Página inicial');
+  });
+
+  it('deve indicar a página ativa para tecnologias assistivas', () => {
+    const links = fixture.nativeElement.querySelectorAll('.bottom-nav__item');
+
+    expect(links[0].getAttribute('ariaCurrentWhenActive')).toBe('page');
+    expect(links[1].getAttribute('ariaCurrentWhenActive')).toBe('page');
+  });
+
   it('NÃO deve exibir banner offline quando conectado', () => {
     offlineService.isOffline.set(false);
     fixture.detectChanges();
