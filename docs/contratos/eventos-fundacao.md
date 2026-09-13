@@ -30,6 +30,14 @@ payload para contextos que ainda não têm contrato versionado. Cada contexto é
 responsável por publicar um DTO explícito e versionado antes de gravá-lo na
 outbox, conforme as atividades próprias.
 
+## Persistência transacional
+
+O serviço de outbox exige uma transação já aberta pelo serviço de aplicação.
+Estado do agregado e evento devem ser gravados nessa mesma unidade atômica;
+uma chamada fora de transação é rejeitada, sem iniciar uma transação
+independente. Reprocessamentos devem reutilizar o mesmo `id` lógico: se ele já
+estiver gravado, a primeira versão do evento é preservada.
+
 O monitor Bitcoin já possui o contrato público dos seis eventos em
 [eventos-bitcoin.md](./eventos-bitcoin.md),
 [eventos-bitcoin-schemas.md](./eventos-bitcoin-schemas.md) e na política de
