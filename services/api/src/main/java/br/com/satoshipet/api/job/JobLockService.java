@@ -1,6 +1,7 @@
 package br.com.satoshipet.api.job;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceException;
 import jakarta.transaction.Transactional;
@@ -14,9 +15,8 @@ import java.util.Objects;
  * Serviço de travas distribuídas baseado em banco de dados.
  *
  * <p>Garante execução exclusiva de jobs agendados em ambientes multi-réplica.
- * Usa uma estratégia de DELETE do lock expirado + INSERT atômico dentro de
- * {@code REQUIRES_NEW}, de modo que falhas de concorrência nunca poluem a
- * transação chamadora.</p>
+ * Usa um upsert condicional atômico dentro de {@code REQUIRES_NEW}, de modo que
+ * a contenção entre instâncias não polua a transação chamadora.</p>
  */
 @ApplicationScoped
 public class JobLockService {
@@ -24,24 +24,26 @@ public class JobLockService {
     private static final Logger LOG = Logger.getLogger(JobLockService.class);
 
     private final EntityManager em;
+    private final JobLockAcquisition acquisition;
 
-    public JobLockService(EntityManager em) {
+    @Inject
+    public JobLockService(EntityManager em, JobLockAcquisition acquisition) {
         this.em = em;
+        this.acquisition = acquisition;
     }
 
     /**
      * Tenta adquirir a trava para o job informado.
      *
-     * <p>A operação roda numa transação independente ({@code REQUIRES_NEW})
-     * para isolar eventuais falhas de unicidade sem afetar a transação
-     * chamadora.</p>
+     * <p>A persistência roda numa transação independente ({@code REQUIRES_NEW})
+     * para isolar a contenção sem afetar a transação chamadora.</p>
      *
      * @param jobName nome único do job
      * @param ownerId identificador da instância/thread que requisita a trava
      * @param ttl     tempo de vida da trava; expirado, qualquer instância pode assumir
-     * @return {@code true} se a trava foi adquirida ou já pertencia ao {@code ownerId}
+     * @return {@code true} se a trava foi adquirida; {@code false} se outra instância
+     *     ainda detém uma trava ativa para o mesmo job
      */
-    @Transactional(Transactional.TxType.REQUIRES_NEW)
     public boolean acquire(String jobName, String ownerId, Duration ttl) {
         Objects.requireNonNull(jobName, "jobName");
         Objects.requireNonNull(ownerId, "ownerId");
@@ -50,36 +52,19 @@ public class JobLockService {
         Instant now = Instant.now();
         Instant expiresAt = now.plus(ttl);
 
-        // Remove lock expirado de qualquer proprietário para liberar o slot.
-        int deleted = em.createNativeQuery(
-                "DELETE FROM job_locks WHERE job_name = :name AND expires_at < :now")
-                .setParameter("name", jobName)
-                .setParameter("now", now)
-                .executeUpdate();
-
-        if (deleted > 0) {
-            LOG.debugf("Lock expirado removido para job=%s", jobName);
-        }
-
         try {
-            // Tenta inserir o novo lock.
-            em.createNativeQuery(
-                    "INSERT INTO job_locks (job_name, owner_id, acquired_at, expires_at) "
-                    + "VALUES (:name, :owner, :acquired, :exp)")
-                    .setParameter("name", jobName)
-                    .setParameter("owner", ownerId)
-                    .setParameter("acquired", now)
-                    .setParameter("exp", expiresAt)
-                    .executeUpdate();
-
-            LOG.debugf("Lock adquirido: job=%s owner=%s", jobName, ownerId);
-            return true;
-
+            int affected = acquisition.execute(jobName, ownerId, now, expiresAt);
+            if (affected == 1) {
+                LOG.debugf("Lock adquirido: job=%s owner=%s", jobName, ownerId);
+                return true;
+            }
         } catch (PersistenceException e) {
-            // Violação de unicidade — outra instância inseriu antes.
-            LOG.debugf("Lock já detido por outro owner: job=%s", jobName);
-            return false;
+            // O adaptador H2 pode sinalizar uma disputa de inserção como colisão
+            // de chave; a transação própria já foi revertida pelo interceptor.
         }
+
+        LOG.debugf("Lock já detido por outro owner: job=%s", jobName);
+        return false;
     }
 
     /**

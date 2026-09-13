@@ -2,6 +2,7 @@ package br.com.satoshipet.api.job;
 
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -43,6 +44,22 @@ class JobLockServiceTest {
         assertFalse(secondAcquired, "owner-B não deve adquirir lock já detido por owner-A");
 
         jobLockService.release(jobName, "owner-A");
+    }
+
+    @Test
+    @Transactional
+    void contençãoNaoMarcaTransacaoChamadoraComoRollback() {
+        String occupiedJob = "lock-contention-" + UUID.randomUUID();
+        String availableJob = "lock-after-contention-" + UUID.randomUUID();
+
+        assertTrue(jobLockService.acquire(occupiedJob, "owner-A", Duration.ofMinutes(1)));
+        assertFalse(jobLockService.acquire(occupiedJob, "owner-B", Duration.ofMinutes(1)));
+
+        assertTrue(jobLockService.acquire(availableJob, "owner-B", Duration.ofMinutes(1)),
+                "A transação chamadora deve continuar utilizável após uma contenção");
+
+        jobLockService.release(occupiedJob, "owner-A");
+        jobLockService.release(availableJob, "owner-B");
     }
 
     @Test
