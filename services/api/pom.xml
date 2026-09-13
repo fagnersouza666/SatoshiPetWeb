@@ -6,7 +6,7 @@
 
     <groupId>br.com.satoshipet</groupId>
     <artifactId>satoshi-pet-api</artifactId>
-    <version>1.1.0-SNAPSHOT</version>
+    <version>1.2.0-SNAPSHOT</version>
     <packaging>quarkus</packaging>
 
     <properties>
@@ -138,7 +138,21 @@
         <!-- Testcontainers — PostgreSQL para testes de integração futuros -->
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Mockito — mocks em testes unitários puros (sem boot Quarkus) -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>5.18.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <version>5.18.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>

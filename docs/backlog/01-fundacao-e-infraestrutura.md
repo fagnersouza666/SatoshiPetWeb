@@ -148,9 +148,9 @@ Estabelecer monorepo, pipeline, persistência, base do **PWA Angular instalável
 
 ## Definition of Done (épico)
 
-- [ ] PWA instalável em HTTPS local/staging com manifest válido
+- [x] PWA instalável em HTTPS local/staging com manifest válido
 - [ ] Stack completa sobe com `docker compose up` (PWA, API, PostgreSQL, MinIO, regtest) — tudo em containers
-- [ ] API + PostgreSQL + Flyway migrations aplicáveis do zero
-- [ ] Outbox publica evento de teste end-to-end via WebSocket
-- [ ] CI verde com Testcontainers PostgreSQL e build das imagens Docker
-- [ ] Regtest disponível para épico BTC
+- [x] API + PostgreSQL + Flyway migrations aplicáveis do zero (H2 em unit tests; PostgreSQL via Testcontainers no `verify -Pci`)
+- [x] Outbox publica evento de teste end-to-end via WebSocket (`OutboxWebSocketIntegrationTest`)
+- [ ] CI verde com Testcontainers PostgreSQL e build das imagens Docker (requer Docker no runner)
+- [x] Regtest disponível para épico BTC (`bitcoind` no Compose; stub/Esplora na API)
