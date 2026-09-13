@@ -179,7 +179,7 @@ O pipeline em `.github/workflows/ci.yml` executa automaticamente em push para
 `main`/`develop` e em pull requests:
 
 1. **verificar-pwa** — `check-pwa.sh` (Node 22.23.2)
-2. **verificar-api** — `check-api.sh` (Java 25 + Docker)
+2. **verificar-api** — `check-api.sh` (Java 25 + Docker + PostgreSQL 18.6)
 3. **build-imagens** — `docker build` para PWA e API, tagueado com `X.Y.Z`
 
 Em pushes para `main`, as imagens são publicadas no GitHub Container Registry
