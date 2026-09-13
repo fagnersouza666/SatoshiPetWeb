@@ -20,7 +20,7 @@ O usuário interage exclusivamente com o **PWA Angular** instalável. O backend 
 | Frontend | React + TypeScript | **Angular 22 + TypeScript** |
 
 **Motivo:** decisão do responsável pelo produto.  
-**Ação sugerida:** registrar ADR `ADR-001-frontend-angular` ou atualizar PRD §16.1.
+**ADR registrada:** [`docs/adr/ADR-001-frontend-angular.md`](../adr/ADR-001-frontend-angular.md)
 
 ### 1.3 Decisão arquitetural — execução 100% containerizada
 
@@ -40,7 +40,7 @@ O usuário interage exclusivamente com o **PWA Angular** instalável. O backend 
 
 **Motivo:** paridade entre ambientes, onboarding trivial (`docker compose up`), reprodutibilidade de build e deploy imutável.
 
-**Ação sugerida:** registrar ADR `ADR-002-execucao-containerizada`.
+**ADR registrada:** [`docs/adr/ADR-002-execucao-containerizada.md`](../adr/ADR-002-execucao-containerizada.md)
 
 ### 1.4 Diagrama de arquitetura
 
@@ -295,7 +295,7 @@ satoshi-pet-web/
 ├── packages/
 │   └── shared-types/           # Tipos/eventos compartilhados (opcional)
 ├── infra/
-│   ├── scripts/                # versao.sh, check-pwa.sh, check-api.sh
+│   ├── scripts/                # versao.mjs, check-pwa.mjs, check-api.mjs (+ .sh wrappers)
 │   ├── docker-compose.yml      # stack completa: pwa, api, postgres, minio, redis, regtest
 │   ├── docker-compose.prod.yml # overrides de produção
 │   ├── flyway/                 # ou migrations dentro do api
@@ -328,11 +328,11 @@ operação ao módulo correspondente. Os comandos agregados são:
 | Comando | Módulos |
 |---------|---------|
 | `npm run build` | `apps/pwa` e `services/api` |
-| `npm test` | testes do `versao.sh`, da PWA e da API |
-| `npm run verify` | `versao.sh verificar`, testes da PWA e `verify` da API, incluindo integrações quando habilitadas |
-| `./infra/scripts/versao.sh` | incrementa (só com mudança de comportamento) ou confere a versão única de PWA e API |
-| `./infra/scripts/check-pwa.sh` | prova local da PWA |
-| `./infra/scripts/check-api.sh` | prova local da API (`mvnw verify`; exige Docker) |
+| `npm test` | testes do `versao.mjs`, da PWA e da API |
+| `npm run verify` | `versao verificar`, testes da PWA e `verify` da API, incluindo integrações quando habilitadas |
+| `npm run versao -- …` | incrementa (só com mudança de comportamento) ou confere a versão única de PWA e API |
+| `npm run check:pwa` | prova local da PWA (Linux: `./infra/scripts/check-pwa.sh` delega ao mesmo `.mjs`) |
+| `npm run check:api` | prova local da API (`mvnw verify`; exige Docker) |
 
 Também há comandos específicos (`start:pwa`, `start:api`, `build:pwa`,
 `build:api`, `test:pwa` e `test:api`). A seleção do Node.js segue a matriz

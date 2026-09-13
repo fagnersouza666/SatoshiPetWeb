@@ -34,9 +34,12 @@ As versões de referência ficam declaradas em [`.nvmrc`](../.nvmrc) (Node.js
 Maven Wrapper versionado em `services/api/mvnw`, portanto não é necessário
 instalar Maven no host.
 
-Os scripts Angular usam `scripts/with-node.sh`, que executa o CLI com a versão
-do `.nvmrc` por meio do pacote `node` do npm. Assim, os gates de build e teste
-também funcionam em runners que não têm nvm, fnm, mise ou volta instalados.
+**Ambiente oficial:** Linux (CI, deploy, dev principal). **Windows:** dev
+ocasional — use `npm run …` na raiz; não dependa de bash.
+
+Os scripts Angular usam `scripts/with-node.mjs` (CLI com versão do `.nvmrc`).
+Os gates `check:pwa` / `check:api` / `versao` são `.mjs` cross-platform; os
+`.sh` em `infra/scripts/` são atalhos para Linux/macOS que delegam aos `.mjs`.
 
 Os comandos abaixo devem ser executados na raiz do repositório:
 
@@ -52,8 +55,8 @@ Os comandos abaixo devem ser executados na raiz do repositório:
 | `npm run test:pwa` | Executa somente os testes da PWA, sem watch |
 | `npm run test:api` | Executa somente os testes da API |
 | `npm run verify` | Confere a versão do produto, testa a PWA e executa `verify` da API |
-| `npm run test:versao` | Testes do script `infra/scripts/versao.sh` |
-| `./infra/scripts/versao.sh atual` | Mostra as versões da raiz, PWA e API |
-| `./infra/scripts/versao.sh verificar` | Falha se as três versões divergirem |
-| `./infra/scripts/check-pwa.sh` | Prova local da PWA (`versao.sh verificar` + testes) |
-| `./infra/scripts/check-api.sh` | Prova local da API (`versao.sh verificar` + `mvnw verify`; exige Docker) |
+| `npm run test:versao` | Testes do script `infra/scripts/versao.mjs` |
+| `npm run versao -- atual` | Mostra as versões da raiz, PWA e API |
+| `npm run versao -- verificar` | Falha se as três versões divergirem |
+| `npm run check:pwa` | Prova local da PWA (`versao verificar` + testes) |
+| `npm run check:api` | Prova local da API (`versao verificar` + `mvnw verify`; exige Docker) |
