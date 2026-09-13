@@ -48,7 +48,7 @@ Na raiz do repositório — **use sempre `npm run` no Windows**; no Linux, `npm
 run` ou `./infra/scripts/check-*.sh` (equivalentes):
 
 ```bash
-npm run check:pwa      # versão + testes Angular
+npm run check:pwa      # versão + testes Angular + smoke de instalação PWA
 npm run check:api      # versão + mvnw verify (Docker ligado)
 npm run verify         # os dois
 npm run versao -- atual
@@ -146,13 +146,28 @@ Porta de saída antes de qualquer `git push`. A CI (Linux) roda os mesmos
 passos via `npm run check:pwa` e `npm run check:api`.
 
 ```bash
-npm run check:pwa    # PWA: versão + Vitest
+npm run check:pwa    # PWA: versão + Vitest + smoke de instalação
 npm run check:api    # API: versão + mvnw verify (Docker + Testcontainers)
 npm run verify       # ambos
 ```
 
 No Linux você também pode `./infra/scripts/check-pwa.sh` — delega ao mesmo
 `.mjs`. No Windows, use só `npm run`.
+
+O smoke test de instalação também pode ser executado isoladamente:
+
+```bash
+npm run test:pwa:install
+```
+
+Ele gera o build de produção, valida o manifesto, os ícones e o service worker
+e consulta os recursos publicados por HTTPS. Por padrão, usa um certificado
+efêmero local; para testar um deployment real, informe
+`PWA_SMOKE_URL=https://seu-host/`. Certificados locais não confiáveis podem ser
+aceitos explicitamente com `PWA_SMOKE_ALLOW_INSECURE=1`. Se `openssl` não
+estiver disponível, a validação de artefatos continua e a etapa HTTPS é
+registrada como `SKIP`; use `PWA_SMOKE_REQUIRE_HTTPS=1` para transformar essa
+limitação em falha.
 
 > **Anti-padrão:** `ng build` ou `mvnw compile` verde **não** substitui os
 > scripts completos. O gate é o script — não uma etapa dele.
