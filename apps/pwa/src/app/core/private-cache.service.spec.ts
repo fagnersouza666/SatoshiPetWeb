@@ -75,9 +75,10 @@ describe('PrivateCacheService', () => {
 
     expect(openSpy).toHaveBeenCalledWith('ngsw:db:version:api-freshness');
     expect(deleteSpy).toHaveBeenCalledTimes(2);
-    expect(deleteSpy).toHaveBeenCalledWith(requests[0]);
-    expect(deleteSpy).toHaveBeenCalledWith(requests[1]);
-    expect(deleteSpy).not.toHaveBeenCalledWith(requests[2]);
+    const deletedPaths = deleteSpy.mock.calls.map(([req]) => new URL(req.url).pathname);
+    expect(deletedPaths).toContain('/api/v1/account/me');
+    expect(deletedPaths).toContain('/api/v1/account/pet/name');
+    expect(deletedPaths).not.toContain('/api/v1/public/addresses/bc1qexample');
   });
 
   it('deve preservar entradas públicas e caminhos parecidos', async () => {

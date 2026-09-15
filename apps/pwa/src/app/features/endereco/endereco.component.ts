@@ -1,7 +1,17 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  OnInit,
+  inject,
+  signal,
+} from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { ApiClientService } from '../../core/api-client.service';
+import { AddressWebSocketService } from '../../core/address-websocket.service';
 import { PublicAddressInfo } from '../../core/models/account.model';
+import { PetEmotionalState } from '../../core/models/pet-art.model';
+import { PetSpriteComponent } from '../../shared/pet-sprite/pet-sprite.component';
 import { firstValueFrom } from 'rxjs';
 
 /** Mapeamento de estado do pet para rótulo legível. */
@@ -15,18 +25,15 @@ const PET_STATE_LABELS: Record<NonNullable<PublicAddressInfo['petState']>, strin
 };
 
 /**
- * Página pública de visualização de endereço Bitcoin (BTC-01..05).
+ * Página pública de visualização de endereço Bitcoin (BTC-01..05, ART-06/10).
  *
- * Consome GET /api/v1/public/addresses/{address} e exibe:
- * - Endereço Bitcoin (monospace, copiável)
- * - Nome, apresentação (ovo textual / criatura) e rótulo operacional
- *
- * Rota pública — não requer autenticação.
- * Acessibilidade: WCAG 2.2 AA — aria-labels no endereço, estados com rótulo textual.
+ * Consome GET /api/v1/public/addresses/{address} e exibe ovo ou sprite aprovado.
+ * WebSocket recarrega atlas em PET_ARTWORK_READY.
  */
 @Component({
   selector: 'app-endereco',
   standalone: true,
+  imports: [PetSpriteComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="page" aria-labelledby="endereco-titulo">
@@ -56,7 +63,15 @@ const PET_STATE_LABELS: Record<NonNullable<PublicAddressInfo['petState']>, strin
 
           @if (info.petName) {
             <div class="pet-block">
-              <span class="pet-name">{{ info.petName }}</span>
+              <div class="pet-visual">
+                <app-pet-sprite
+                  [presentation]="info.presentation"
+                  [petState]="info.petState"
+                  [atlasUrl]="atlasUrl()"
+                  [petName]="info.petName"
+                />
+                <span class="pet-name">{{ info.petName }}</span>
+              </div>
               @if (info.presentation === 'EGG') {
                 <span class="pet-egg" aria-label="Apresentação: ovo">Ovo</span>
               }
@@ -180,9 +195,16 @@ const PET_STATE_LABELS: Record<NonNullable<PublicAddressInfo['petState']>, strin
 
       .pet-block {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
         flex-wrap: wrap;
+        gap: var(--space-3);
+      }
+
+      .pet-visual {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         gap: var(--space-2);
       }
 
@@ -232,15 +254,22 @@ const PET_STATE_LABELS: Record<NonNullable<PublicAddressInfo['petState']>, strin
 export class EnderecoComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly api = inject(ApiClientService);
+  private readonly addressWs = inject(AddressWebSocketService);
+  private readonly destroyRef = inject(DestroyRef);
 
   protected readonly carregando = signal(false);
   protected readonly erro = signal<string | null>(null);
   protected readonly info = signal<PublicAddressInfo | null>(null);
+  protected readonly atlasUrl = signal<string | undefined>(undefined);
 
   ngOnInit(): void {
     const address = this.route.snapshot.paramMap.get('address');
     if (address) {
-      this.carregarEndereco(address);
+      void this.carregarEndereco(address);
+      this.addressWs.connect(address, () => {
+        void this.carregarEndereco(address);
+      });
+      this.destroyRef.onDestroy(() => this.addressWs.disconnect());
     }
   }
 
@@ -253,6 +282,9 @@ export class EnderecoComponent implements OnInit {
         this.api.get<PublicAddressInfo>(`/v1/public/addresses/${address}`),
       );
       this.info.set(data);
+      this.atlasUrl.set(
+        data.atlasUrl ? `${data.atlasUrl}?v=${data.artworkVersion ?? '0'}` : undefined,
+      );
     } catch {
       this.erro.set('Não foi possível carregar os dados do endereço. Tente novamente.');
     } finally {
@@ -260,7 +292,7 @@ export class EnderecoComponent implements OnInit {
     }
   }
 
-  protected petStateLabel(state: NonNullable<PublicAddressInfo['petState']>): string {
+  protected petStateLabel(state: PetEmotionalState): string {
     return PET_STATE_LABELS[state] ?? state;
   }
 }

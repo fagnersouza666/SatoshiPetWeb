@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { RouterLink } from '@angular/router';
 import { SessionService } from '../../core/session.service';
 import { AuthService } from '../../core/auth.service';
+import { PetArtworkPanelComponent } from './pet-artwork-panel.component';
 
 /**
  * Página da conta autenticada (CONTA-05).
@@ -15,7 +16,7 @@ import { AuthService } from '../../core/auth.service';
 @Component({
   selector: 'app-conta',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, PetArtworkPanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="page" aria-labelledby="conta-titulo">
@@ -56,6 +57,8 @@ import { AuthService } from '../../core/auth.service';
             </a>
           }
         </div>
+
+        <app-pet-artwork-panel />
       }
 
       @if (erroLogout()) {

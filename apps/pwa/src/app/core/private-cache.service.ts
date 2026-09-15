@@ -79,6 +79,10 @@ export class PrivateCacheService {
       return false;
     }
 
+    if (pathname.startsWith('/api/v1/public/')) {
+      return false;
+    }
+
     return this.PRIVATE_API_PATHS.some(
       (path) => pathname === path || pathname.startsWith(`${path}/`),
     );

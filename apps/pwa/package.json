@@ -1,6 +1,6 @@
 {
   "name": "pwa",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "scripts": {
     "ng": "node ../../scripts/with-node.mjs ng",
     "start": "node ../../scripts/with-node.mjs ng serve",

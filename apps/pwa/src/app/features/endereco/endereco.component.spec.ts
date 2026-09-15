@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { Observable, of, Subject, throwError } from 'rxjs';
 import { ApiClientService } from '../../core/api-client.service';
+import { AddressWebSocketService } from '../../core/address-websocket.service';
 import { PublicAddressInfo } from '../../core/models/account.model';
 import { EnderecoComponent } from './endereco.component';
 
@@ -23,6 +24,10 @@ describe('EnderecoComponent', () => {
           useValue: { snapshot: { paramMap: convertToParamMap({ address: ADDRESS }) } },
         },
         { provide: ApiClientService, useValue: apiSpy },
+        {
+          provide: AddressWebSocketService,
+          useValue: { connect: vi.fn(), disconnect: vi.fn() },
+        },
       ],
     }).compileComponents();
 
@@ -47,12 +52,26 @@ describe('EnderecoComponent', () => {
 
     const texto = fixture.nativeElement.textContent as string;
     expect(texto).toContain('Ovo');
-    expect(fixture.nativeElement.querySelector('img, svg')).toBeNull();
+    expect(fixture.nativeElement.querySelector('img[src="/assets/egg.svg"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.pet-state')).toBeNull();
 
     const status = fixture.nativeElement.querySelector('[role="status"]');
     expect(status).not.toBeNull();
     expect(status?.textContent).toContain('Aguardando referência do plano');
+  });
+
+  it('deve exibir sprite canvas para criatura com atlas', async () => {
+    const info: PublicAddressInfo = {
+      address: ADDRESS,
+      petName: 'Pixel',
+      presentation: 'CREATURE',
+      petState: 'ALIMENTADO',
+      atlasUrl: '/api/v1/public/addresses/x/artwork/1/atlas.png',
+      artworkVersion: '1',
+    };
+    await criarComponente(of(info));
+
+    expect(fixture.nativeElement.querySelector('canvas')).not.toBeNull();
   });
 
   it('deve exibir estado emocional somente para criatura', async () => {
@@ -85,6 +104,10 @@ describe('EnderecoComponent', () => {
           useValue: { snapshot: { paramMap: convertToParamMap({ address: ADDRESS }) } },
         },
         { provide: ApiClientService, useValue: apiSpy },
+        {
+          provide: AddressWebSocketService,
+          useValue: { connect: vi.fn(), disconnect: vi.fn() },
+        },
       ],
     }).compileComponents();
 

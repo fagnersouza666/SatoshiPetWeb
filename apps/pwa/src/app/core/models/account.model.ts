@@ -34,5 +34,7 @@ export interface PublicAddressInfo {
   awaitingReference?: boolean;
   pendingMovesEgg?: boolean;
   operationalLabel?: string | null;
+  artworkVersion?: string;
+  atlasUrl?: string;
   createdAt?: string;
 }

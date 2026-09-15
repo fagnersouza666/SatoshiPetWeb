@@ -60,6 +60,15 @@
   ],
   "dataGroups": [
     {
+      "name": "pet-artwork",
+      "urls": ["/api/v1/public/addresses/*/artwork/**"],
+      "cacheConfig": {
+        "strategy": "cacheFirst",
+        "maxSize": 50,
+        "maxAge": "365d"
+      }
+    },
+    {
       "name": "api-freshness",
       "urls": ["/api/**"],
       "cacheConfig": {
