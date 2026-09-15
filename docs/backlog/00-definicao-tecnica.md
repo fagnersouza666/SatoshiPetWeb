@@ -207,9 +207,10 @@ Coordenadas: arredondadas antes de persistir (PRD §13.1).
 
 | Aspecto | Detalhe |
 |---------|---------|
-| Provedor | A contratar (OpenAI DALL·E, Stability, etc.) |
-| Saída | Pixel art 2D, atlas PNG, transparência |
-| Persistência | Object storage + metadados em `PetArtwork` |
+| Provedor (recorte ART) | `ImageGenerationPort` + stub determinístico `stub-v1` (fixtures PNG) |
+| Provedor (futuro) | Adaptador pago (OpenAI, Stability, etc.) atrás da mesma porta |
+| Saída | Pixel art 2D, atlas 4×4 PNG, transparência, 14 poses |
+| Persistência | Object storage (`STAGING` → `APPROVED`) + `PetArtwork` |
 | Guardrails | PRD §8.1 — sem conteúdo ofensivo, marcas, pessoas reais |
 | Custo | Deduplicação por pet; limite de regeneração CC-13 |
 

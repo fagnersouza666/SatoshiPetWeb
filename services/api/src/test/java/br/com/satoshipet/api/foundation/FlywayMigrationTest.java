@@ -39,7 +39,9 @@ class FlywayMigrationTest {
             "RECOVERY_CODES",
             "PET_FEEDINGS",
             "PET_REFERENCE_PORTIONS",
-            "PRESENTATION_CURSORS"
+            "PRESENTATION_CURSORS",
+            "PET_ARTWORKS",
+            "PET_ARTWORK_ATTEMPTS"
     );
 
     @Inject

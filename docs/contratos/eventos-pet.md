@@ -9,12 +9,11 @@ Este catálogo registra os nomes dos eventos `PET_*` emitidos pelo motor na
 outbox transacional e publicados no WebSocket. Os nomes são a referência
 única para backend, canal de endereço, fila da conta e relatórios.
 
-Não emitir `PET_ARTWORK_READY` neste recorte (épico ART).
-
 ## Quando emitir
 
 | Evento | Transição |
 | --- | --- |
+| `PET_ARTWORK_READY` | Arte aprovada (criador ou auto-aprovação CC-13); assets promovidos para bucket aprovado |
 | `PET_FEEDING_APPLIED` | Nova alimentação `LIVE` apresentável, ou a primeira vez em que `presentable` vira verdadeiro (confirmação no ovo) |
 | `PET_FEEDING_REVISED` | Alimentação `LIVE` existente com amount/duration/status revistos (RBF), sem ser a primeira criação |
 | `PET_FEEDING_INVALIDATED` | Alimentação `LIVE` invalidada |
@@ -48,7 +47,7 @@ O JSON gravado na outbox e transmitido no WebSocket contém **somente**:
 | Campo | Tipo | Regra |
 | --- | --- | --- |
 | `address` | string | Endereço Bitcoin canônico |
-| `eventType` | string | Um dos sete nomes acima |
+| `eventType` | string | Um dos oito nomes acima |
 | `occurredAt` | string ISO-8601 | Instante UTC da transição |
 | `presentation` | `EGG` \| `CREATURE` | Apresentação após a transição |
 | `emotionalState` | string ou omitido | Presente na criatura; omitido ou nulo no ovo |
@@ -56,8 +55,13 @@ O JSON gravado na outbox e transmitido no WebSocket contém **somente**:
 | `awaitingReference` | boolean | Sem porção de referência |
 | `feedingStatus` | `PROVISIONAL` \| `VALID` \| `INVALIDATED` | Só em `PET_FEEDING_*` |
 | `amountSats` | inteiro | Só em `PET_FEEDING_*` |
+| `artworkVersion` | inteiro | Só em `PET_ARTWORK_READY` |
+| `atlasUrl` | string | Caminho same-origin do atlas aprovado; só em `PET_ARTWORK_READY` |
+
+Schema dedicado: [`artwork-ready.schema.json`](./schemas/pet-events/v1/artwork-ready.schema.json).
 
 Chaves **proibidas** em qualquer ponto do payload: `petId`, `accountId`,
+`prompt`, `prompt_private`, `seed`, `modelId`
 `email`, `foodSourceAccountId`.
 
 `aggregateType = "Pet"`. `aggregateId = pet.id` (interno à outbox, não vai

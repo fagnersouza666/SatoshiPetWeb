@@ -119,8 +119,12 @@ Gerar criatura original em pixel art 2D por IA no nascimento, produzir conjunto 
 
 ## Definition of Done (épico)
 
-- [ ] Nascimento dispara geração uma vez por endereço
-- [ ] CA-036 a CA-040 verificáveis
-- [ ] Regeneração voluntária limitada a 1
-- [ ] Falha técnica não consome sorteio
-- [ ] Sprites servidos ao PWA com cache versionado
+- [x] Nascimento dispara geração uma vez por endereço
+- [x] CA-036 a CA-040 verificáveis
+- [x] Regeneração voluntária limitada a 1
+- [x] Falha técnica não consome sorteio
+- [x] Sprites servidos ao PWA com cache versionado
+
+**Recorte atual:** provedor `ImageGenerationPort` via stub determinístico (`stub-v1`);
+adaptador pago entra em história futura. Clima real (épico CLIMA) enriquece o
+contexto congelado sem regenerar arte aprovada.

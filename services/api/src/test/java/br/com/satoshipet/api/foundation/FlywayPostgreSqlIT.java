@@ -72,7 +72,9 @@ class FlywayPostgreSqlIT {
             "recovery_codes",
             "pet_feedings",
             "pet_reference_portions",
-            "presentation_cursors"
+            "presentation_cursors",
+            "pet_artworks",
+            "pet_artwork_attempts"
     );
 
     @org.testcontainers.junit.jupiter.Container
@@ -162,11 +164,11 @@ class FlywayPostgreSqlIT {
     private static void assertMigrationHistory(Flyway flyway) {
         MigrationInfo[] migrations = flyway.info().all();
 
-        assertEquals(6, migrations.length, "O catálogo deve conter V1 a V6");
+        assertEquals(7, migrations.length, "O catálogo deve conter V1 a V7");
         assertTrue(Arrays.stream(migrations)
                 .allMatch(migration -> migration.getState() == MigrationState.SUCCESS),
                 "Todas as migrations devem estar aplicadas com sucesso");
-        assertEquals("6", flyway.info().current().getVersion().getVersion());
+        assertEquals("7", flyway.info().current().getVersion().getVersion());
     }
 
     private static Set<String> tableNames(Connection connection) throws SQLException {

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:satoshi-pet-web:contracts:pet-events:v1:artwork-ready",
+  "title": "Evento público PET_ARTWORK_READY",
+  "description": "Payload público emitido após aprovação da arte (ART-06, CA-009). Sem petId, prompt ou seed.",
+  "type": "object",
+  "required": [
+    "address",
+    "eventType",
+    "occurredAt",
+    "presentation",
+    "artworkVersion",
+    "atlasUrl"
+  ],
+  "properties": {
+    "address": {
+      "type": "string",
+      "minLength": 14,
+      "maxLength": 90,
+      "pattern": "^[A-Za-z0-9]+$"
+    },
+    "eventType": {
+      "const": "PET_ARTWORK_READY"
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "presentation": {
+      "type": "string",
+      "enum": ["EGG", "CREATURE"]
+    },
+    "artworkVersion": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "atlasUrl": {
+      "type": "string",
+      "pattern": "^/api/v1/public/addresses/.+/artwork/[0-9]+/atlas\\.png$"
+    }
+  },
+  "unevaluatedProperties": false
+}
