@@ -50,9 +50,15 @@ e `state` (estado emocional da criatura). Sem pet no endereço, só o
 {
   "address": "bc1…",
   "presentation": "CREATURE",
-  "state": "ALIMENTADO"
+  "state": "ALIMENTADO",
+  "artworkVersion": "1",
+  "atlasUrl": "/api/v1/public/addresses/bc1…/artwork/1/atlas.png"
 }
 ```
+
+Campos `artworkVersion` e `atlasUrl` aparecem somente com arte aprovada.
+Evento incremental `PET_ARTWORK_READY` usa o schema
+[`artwork-ready.schema.json`](./schemas/pet-events/v1/artwork-ready.schema.json).
 
 ## Mensagens do cliente
 

@@ -2,12 +2,16 @@ package br.com.satoshipet.api.pet;
 
 import br.com.satoshipet.api.account.Account;
 import br.com.satoshipet.api.account.AccountAddressBinding;
+import br.com.satoshipet.api.art.ArtworkInfoResponse;
+import br.com.satoshipet.api.art.ArtworkOperationException;
+import br.com.satoshipet.api.art.ArtworkService;
 import br.com.satoshipet.api.platform.AuthenticatedSession;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -32,6 +36,9 @@ public class PetAccountResource {
     @Inject
     PetStatsService statsService;
 
+    @Inject
+    ArtworkService artworkService;
+
     /**
      * Snapshot compartilhado do pet da conta autenticada.
      *
@@ -52,11 +59,88 @@ public class PetAccountResource {
         if (snapshot.petName() == null) {
             return petNotFound();
         }
+        Optional<Pet> pet = Pet.findByAddress(binding.get().address);
+        ArtworkInfoResponse artwork = pet.flatMap(p -> artworkService.artworkInfo(p, account)).orElse(null);
         return Response.ok(AccountPetResponse.of(
                 snapshot,
+                artwork,
                 presentationService.presentationQueue(account),
                 statsService.stats(account)
         )).build();
+    }
+
+    @POST
+    @Path("/artwork/approve")
+    @Transactional
+    public Response approveArtwork() {
+        return mutateArtwork(artworkService::approve);
+    }
+
+    @POST
+    @Path("/artwork/regenerate")
+    @Transactional
+    public Response regenerateArtwork() {
+        return mutateArtwork(artworkService::regenerate);
+    }
+
+    @GET
+    @Path("/artwork/preview/{file}")
+    @Produces("image/png")
+    @Transactional
+    public Response previewArtwork(@PathParam("file") String file) {
+        if (!authenticatedSession.isAuthenticated()) {
+            return unauthorized();
+        }
+        Account account = authenticatedSession.get().account;
+        Optional<AccountAddressBinding> binding = AccountAddressBinding.findActivePrimary(account);
+        if (binding.isEmpty()) {
+            return petNotFound();
+        }
+        Optional<Pet> pet = Pet.findByAddress(binding.get().address);
+        if (pet.isEmpty()) {
+            return petNotFound();
+        }
+        try {
+            byte[] bytes = artworkService.readStagingObject(pet.get(), account, file);
+            return Response.ok(bytes)
+                    .type("image/png")
+                    .header("Cache-Control", "private, no-store")
+                    .header("Pragma", "no-cache")
+                    .build();
+        } catch (ArtworkOperationException e) {
+            int status = "not_creator".equals(e.code()) ? 403 : 404;
+            return Response.status(status).entity(new ErrorBody(e.code(), e.getMessage())).build();
+        }
+    }
+
+    private Response mutateArtwork(ArtworkMutator mutator) {
+        if (!authenticatedSession.isAuthenticated()) {
+            return unauthorized();
+        }
+        Account account = authenticatedSession.get().account;
+        Optional<AccountAddressBinding> binding = AccountAddressBinding.findActivePrimary(account);
+        if (binding.isEmpty()) {
+            return petNotFound();
+        }
+        Optional<Pet> pet = Pet.findByAddress(binding.get().address);
+        if (pet.isEmpty()) {
+            return petNotFound();
+        }
+        try {
+            ArtworkInfoResponse artwork = mutator.apply(account, pet.get());
+            return Response.ok(artwork).build();
+        } catch (ArtworkOperationException e) {
+            int status = switch (e.code()) {
+                case "not_creator", "regen_exhausted", "already_approved" -> 403;
+                default -> 422;
+            };
+            return Response.status(status).entity(new ErrorBody(e.code(), e.getMessage())).build();
+        }
+    }
+
+    @FunctionalInterface
+    private interface ArtworkMutator {
+        ArtworkInfoResponse apply(Account account, Pet pet);
     }
 
     /**

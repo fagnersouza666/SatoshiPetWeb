@@ -29,7 +29,9 @@ public record PublicAddressResponse(
         String reserveHours,
         Boolean awaitingReference,
         Boolean pendingMovesEgg,
-        String operationalLabel
+        String operationalLabel,
+        String artworkVersion,
+        String atlasUrl
 ) {
     public PublicAddressResponse {
         recentTransactions = recentTransactions == null ? List.of() : List.copyOf(recentTransactions);
@@ -62,7 +64,9 @@ public record PublicAddressResponse(
                 snapshot.reserveHours(),
                 snapshot.awaitingReference(),
                 snapshot.pendingMovesEgg(),
-                snapshot.operationalLabel()
+                snapshot.operationalLabel(),
+                snapshot.artworkVersion(),
+                snapshot.atlasUrl()
         );
     }
 

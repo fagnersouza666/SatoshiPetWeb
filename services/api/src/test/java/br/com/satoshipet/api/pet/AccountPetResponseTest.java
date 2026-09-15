@@ -17,12 +17,14 @@ class AccountPetResponseTest {
                 "0.0000000000",
                 true,
                 false,
-                "Aguardando referência do plano"
+                "Aguardando referência do plano",
+                null,
+                null
         );
         PresentationQueueResponse queue = new PresentationQueueResponse(java.util.List.of());
         PetStatsResponse stats = new PetStatsResponse(null, null, TimeInStateHours.zeros(), false, false);
 
-        AccountPetResponse response = AccountPetResponse.of(snapshot, queue, stats);
+        AccountPetResponse response = AccountPetResponse.of(snapshot, null, queue, stats);
 
         assertEquals("Pixel", response.petName());
         assertEquals("EGG", response.presentation());

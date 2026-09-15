@@ -1,5 +1,6 @@
 package br.com.satoshipet.api.pet;
 
+import br.com.satoshipet.api.art.ArtworkInfoResponse;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
@@ -14,11 +15,15 @@ public record AccountPetResponse(
         Boolean awaitingReference,
         Boolean pendingMovesEgg,
         String operationalLabel,
+        String artworkVersion,
+        String atlasUrl,
+        ArtworkInfoResponse artwork,
         PresentationQueueResponse presentationQueue,
         PetStatsResponse stats
 ) {
     public static AccountPetResponse of(
             PetPublicSnapshot snapshot,
+            ArtworkInfoResponse artwork,
             PresentationQueueResponse presentationQueue,
             PetStatsResponse stats
     ) {
@@ -31,6 +36,9 @@ public record AccountPetResponse(
                 pet.awaitingReference(),
                 pet.pendingMovesEgg(),
                 pet.operationalLabel(),
+                pet.artworkVersion(),
+                pet.atlasUrl(),
+                artwork,
                 presentationQueue,
                 stats
         );

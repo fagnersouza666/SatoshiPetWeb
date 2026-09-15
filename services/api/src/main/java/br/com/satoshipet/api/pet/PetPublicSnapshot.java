@@ -1,6 +1,9 @@
 package br.com.satoshipet.api.pet;
 
 import br.com.satoshipet.api.account.Address;
+import br.com.satoshipet.api.art.ArtGenerationStatus;
+import br.com.satoshipet.api.art.ArtworkKeys;
+import br.com.satoshipet.api.art.PetArtwork;
 import br.com.satoshipet.api.btc.LogicalReceipt;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
@@ -20,7 +23,9 @@ public record PetPublicSnapshot(
         String reserveHours,
         Boolean awaitingReference,
         Boolean pendingMovesEgg,
-        String operationalLabel
+        String operationalLabel,
+        String artworkVersion,
+        String atlasUrl
 ) {
 
     static final String LABEL_AWAITING_REFERENCE = "Aguardando referência do plano";
@@ -28,7 +33,7 @@ public record PetPublicSnapshot(
     static final String LABEL_PREPARING_BIRTH = "Preparando nascimento";
 
     public static PetPublicSnapshot empty() {
-        return new PetPublicSnapshot(null, null, null, null, null, null, null);
+        return new PetPublicSnapshot(null, null, null, null, null, null, null, null, null);
     }
 
     public static PetPublicSnapshot from(Pet pet, long pendingIncomingSats) {
@@ -43,7 +48,34 @@ public record PetPublicSnapshot(
                 pet.reserveHours == null ? null : pet.reserveHours.toPlainString(),
                 pet.awaitingReference,
                 pendingMovesEgg,
-                operationalLabel(pet, pendingMovesEgg)
+                operationalLabel(pet, pendingMovesEgg),
+                null,
+                null
+        );
+    }
+
+    private static PetPublicSnapshot withApprovedArtwork(PetPublicSnapshot base, Pet pet) {
+        if (pet.artworkStatus != ArtworkStatus.APPROVED) {
+            return base;
+        }
+        Optional<PetArtwork> artworkOpt = PetArtwork.findByPet(pet);
+        if (artworkOpt.isEmpty()) {
+            return base;
+        }
+        PetArtwork artwork = artworkOpt.get();
+        if (artwork.generationStatus != ArtGenerationStatus.APPROVED || artwork.assetVersion <= 0) {
+            return base;
+        }
+        return new PetPublicSnapshot(
+                base.petName(),
+                base.presentation(),
+                base.petState(),
+                base.reserveHours(),
+                base.awaitingReference(),
+                base.pendingMovesEgg(),
+                base.operationalLabel(),
+                Integer.toString(artwork.assetVersion),
+                ArtworkKeys.publicAtlasPath(pet.address.canonical, artwork.assetVersion)
         );
     }
 
@@ -70,7 +102,7 @@ public record PetPublicSnapshot(
         long pendingIncomingSats = LogicalReceipt.findByAddress(address).stream()
                 .mapToLong(receipt -> receipt.pendingSats)
                 .sum();
-        return from(pet.get(), pendingIncomingSats);
+        return withApprovedArtwork(from(pet.get(), pendingIncomingSats), pet.get());
     }
 
     private static String operationalLabel(Pet pet, boolean pendingMovesEgg) {
