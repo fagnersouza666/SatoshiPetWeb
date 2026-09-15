@@ -19,7 +19,7 @@ termina sua inicialização. A criação não apaga objetos existentes.
 | API S3 do MinIO | `http://localhost:9000` | `http://minio:9000` | Endpoint usado pela API no Compose |
 | Console do MinIO | `http://localhost:9001` | — | Interface administrativa local |
 | Bucket principal | `pet-artwork` | — | Assets aprovados; usado pelo adaptador |
-| Bucket de staging | `pet-artwork-staging` | — | Pré-visualizações; bootstrap libera download anônimo |
+| Bucket de staging | `pet-artwork-staging` | — | Pré-visualizações; acesso somente via API autenticada |
 
 As portas do host são configuráveis por `MINIO_API_PORT` e
 `MINIO_CONSOLE_PORT`. O volume Docker `minio-data` preserva os objetos entre
@@ -94,3 +94,15 @@ docker compose -f infra/docker-compose.yml down -v
 ```
 
 Esse último comando remove o volume local `minio-data`.
+
+## Chaves de arte (ART-10)
+
+| Namespace (`StorageNamespace`) | Bucket MinIO | Uso |
+| --- | --- | --- |
+| `STAGING` | `pet-artwork-staging` | Tentativas e preview autenticado (`attempt-N`) |
+| `APPROVED` | `pet-artwork` | Versão aprovada servida publicamente |
+
+Padrão de chave aprovada: `pets/{petId}/v{version}/atlas.png` e
+`pets/{petId}/v{version}/{pose}.png`. Staging inclui sufixo
+`attempt-{n}` até a aprovação; `ObjectStoragePort.promote(keys, stagingPrefix, approvedPrefix)`
+copia e remapeia para o prefixo aprovado.

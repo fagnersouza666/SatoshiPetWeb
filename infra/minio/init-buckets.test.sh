@@ -25,11 +25,9 @@ esperado=$(cat <<'EOF'
 alias set local http://storage.test:9000 test-user test-password
 mb --ignore-existing local/pet-artwork
 mb --ignore-existing local/pet-artwork-staging
-anonymous set download local/pet-artwork-staging
 alias set local http://storage.test:9000 test-user test-password
 mb --ignore-existing local/pet-artwork
 mb --ignore-existing local/pet-artwork-staging
-anonymous set download local/pet-artwork-staging
 EOF
 )
 

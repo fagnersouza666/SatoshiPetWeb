@@ -41,10 +41,10 @@ class MinioObjectStorageTest {
         ObjectStoragePort storage = storageFor(APPROVED_BUCKET);
         byte[] expected = "sprite aprovado".getBytes(StandardCharsets.UTF_8);
 
-        storage.put("test/aprovado/sprite.png", expected, "image/png");
+        storage.put(StorageNamespace.APPROVED, "test/aprovado/sprite.png", expected, "image/png");
 
-        assertTrue(storage.exists("test/aprovado/sprite.png"));
-        try (InputStream result = storage.get("test/aprovado/sprite.png")) {
+        assertTrue(storage.exists(StorageNamespace.APPROVED, "test/aprovado/sprite.png"));
+        try (InputStream result = storage.get(StorageNamespace.APPROVED, "test/aprovado/sprite.png")) {
             assertArrayEquals(expected, result.readAllBytes());
         }
     }
@@ -54,24 +54,23 @@ class MinioObjectStorageTest {
         String key = "test/isolation/sprite.png";
         byte[] approved = "conteudo aprovado".getBytes(StandardCharsets.UTF_8);
         byte[] staging = "preview staging".getBytes(StandardCharsets.UTF_8);
-        ObjectStoragePort approvedStorage = storageFor(APPROVED_BUCKET);
-        ObjectStoragePort stagingStorage = storageFor(STAGING_BUCKET);
+        MinioObjectStorage storage = storageFor(APPROVED_BUCKET);
 
-        approvedStorage.put(key, approved, "image/png");
-        stagingStorage.put(key, staging, "image/png");
+        storage.put(StorageNamespace.APPROVED, key, approved, "image/png");
+        storage.put(StorageNamespace.STAGING, key, staging, "image/png");
 
-        try (InputStream result = approvedStorage.get(key)) {
+        try (InputStream result = storage.get(StorageNamespace.APPROVED, key)) {
             assertArrayEquals(approved, result.readAllBytes());
         }
-        try (InputStream result = stagingStorage.get(key)) {
+        try (InputStream result = storage.get(StorageNamespace.STAGING, key)) {
             assertArrayEquals(staging, result.readAllBytes());
         }
 
-        approvedStorage.delete(key);
+        storage.delete(StorageNamespace.APPROVED, key);
 
-        assertFalse(approvedStorage.exists(key));
-        assertTrue(stagingStorage.exists(key));
-        try (InputStream result = stagingStorage.get(key)) {
+        assertFalse(storage.exists(StorageNamespace.APPROVED, key));
+        assertTrue(storage.exists(StorageNamespace.STAGING, key));
+        try (InputStream result = storage.get(StorageNamespace.STAGING, key)) {
             assertArrayEquals(staging, result.readAllBytes());
         }
     }

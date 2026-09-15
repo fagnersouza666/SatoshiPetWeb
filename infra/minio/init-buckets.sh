@@ -16,4 +16,4 @@ for bucket in pet-artwork pet-artwork-staging; do
     mc mb --ignore-existing "local/$bucket"
 done
 
-mc anonymous set download local/pet-artwork-staging
+# Staging permanece privado — previews só via API autenticada (ART-05).

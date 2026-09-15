@@ -1,6 +1,8 @@
 package br.com.satoshipet.api.storage;
 
 import io.minio.BucketExistsArgs;
+import io.minio.CopyObjectArgs;
+import io.minio.CopySource;
 import io.minio.GetObjectArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
@@ -17,6 +19,8 @@ import org.jboss.logging.Logger;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
+import java.util.Objects;
 
 /**
  * Adaptador de object storage usando MinIO (S3-compatível).
@@ -68,11 +72,16 @@ public class MinioObjectStorage implements ObjectStoragePort {
         }
     }
 
+    private String resolveBucket(StorageNamespace namespace) {
+        return namespace == StorageNamespace.STAGING ? stagingBucket : bucket;
+    }
+
     @Override
-    public void put(String key, byte[] data, String contentType) {
+    public void put(StorageNamespace namespace, String key, byte[] data, String contentType) {
+        String bucketName = resolveBucket(namespace);
         try {
             client.putObject(PutObjectArgs.builder()
-                    .bucket(bucket)
+                    .bucket(bucketName)
                     .object(key)
                     .stream(new ByteArrayInputStream(data), data.length, -1)
                     .contentType(contentType)
@@ -83,10 +92,11 @@ public class MinioObjectStorage implements ObjectStoragePort {
     }
 
     @Override
-    public InputStream get(String key) {
+    public InputStream get(StorageNamespace namespace, String key) {
+        String bucketName = resolveBucket(namespace);
         try {
             return client.getObject(GetObjectArgs.builder()
-                    .bucket(bucket)
+                    .bucket(bucketName)
                     .object(key)
                     .build());
         } catch (ErrorResponseException e) {
@@ -100,23 +110,24 @@ public class MinioObjectStorage implements ObjectStoragePort {
     }
 
     @Override
-    public void delete(String key) {
+    public void delete(StorageNamespace namespace, String key) {
+        String bucketName = resolveBucket(namespace);
         try {
             client.removeObject(RemoveObjectArgs.builder()
-                    .bucket(bucket)
+                    .bucket(bucketName)
                     .object(key)
                     .build());
         } catch (Exception e) {
-            // Idempotente: ignora erros de chave inexistente.
             LOG.debugf("Objeto '%s' não encontrado ao deletar (ignorado).", key);
         }
     }
 
     @Override
-    public boolean exists(String key) {
+    public boolean exists(StorageNamespace namespace, String key) {
+        String bucketName = resolveBucket(namespace);
         try {
             client.statObject(StatObjectArgs.builder()
-                    .bucket(bucket)
+                    .bucket(bucketName)
                     .object(key)
                     .build());
             return true;
@@ -128,6 +139,38 @@ public class MinioObjectStorage implements ObjectStoragePort {
         } catch (Exception e) {
             throw new StorageException("Falha ao verificar existência: " + key, e);
         }
+    }
+
+    @Override
+    public void promote(List<String> keys) {
+        promote(keys, null, null);
+    }
+
+    @Override
+    public void promote(List<String> keys, String stagingPrefix, String approvedPrefix) {
+        Objects.requireNonNull(keys, "keys");
+        for (String key : keys) {
+            String targetKey = remapKey(key, stagingPrefix, approvedPrefix);
+            try {
+                client.copyObject(CopyObjectArgs.builder()
+                        .bucket(bucket)
+                        .object(targetKey)
+                        .source(CopySource.builder()
+                                .bucket(stagingBucket)
+                                .object(key)
+                                .build())
+                        .build());
+            } catch (Exception e) {
+                throw new StorageException("Falha ao promover objeto: " + key, e);
+            }
+        }
+    }
+
+    private static String remapKey(String key, String stagingPrefix, String approvedPrefix) {
+        if (stagingPrefix == null || approvedPrefix == null || !key.startsWith(stagingPrefix)) {
+            return key;
+        }
+        return approvedPrefix + key.substring(stagingPrefix.length());
     }
 
     /** Exceção de infraestrutura do storage (não exposta ao domínio). */

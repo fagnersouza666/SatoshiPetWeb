@@ -93,6 +93,53 @@ class ObjectStoragePortTest {
     }
 
     @Test
+    void stagingEApprovedPermanecemIsolados() throws IOException {
+        String key = "pets/test/sprite.png";
+        byte[] approved = "aprovado".getBytes(StandardCharsets.UTF_8);
+        byte[] staging = "preview".getBytes(StandardCharsets.UTF_8);
+
+        storage.put(StorageNamespace.APPROVED, key, approved, "image/png");
+        storage.put(StorageNamespace.STAGING, key, staging, "image/png");
+
+        try (InputStream result = storage.get(StorageNamespace.APPROVED, key)) {
+            assertArrayEquals(approved, result.readAllBytes());
+        }
+        try (InputStream result = storage.get(StorageNamespace.STAGING, key)) {
+            assertArrayEquals(staging, result.readAllBytes());
+        }
+    }
+
+    @Test
+    void promoteCopiaDoStagingParaApproved() throws IOException {
+        String key = "pets/promote/atlas.png";
+        byte[] staging = "staging-atlas".getBytes(StandardCharsets.UTF_8);
+        storage.put(StorageNamespace.STAGING, key, staging, "image/png");
+
+        storage.promote(java.util.List.of(key));
+
+        try (InputStream result = storage.get(StorageNamespace.APPROVED, key)) {
+            assertArrayEquals(staging, result.readAllBytes());
+        }
+    }
+
+    @Test
+    void promoteRemapeiaPrefixoDeStagingParaApproved() throws IOException {
+        String stagingPrefix = "pets/id/v1/attempt-1";
+        String approvedPrefix = "pets/id/v1";
+        String stagingKey = stagingPrefix + "/atlas.png";
+        String approvedKey = approvedPrefix + "/atlas.png";
+        byte[] staging = "staging-atlas".getBytes(StandardCharsets.UTF_8);
+        storage.put(StorageNamespace.STAGING, stagingKey, staging, "image/png");
+
+        storage.promote(java.util.List.of(stagingKey), stagingPrefix, approvedPrefix);
+
+        assertFalse(storage.exists(StorageNamespace.APPROVED, stagingKey));
+        try (InputStream result = storage.get(StorageNamespace.APPROVED, approvedKey)) {
+            assertArrayEquals(staging, result.readAllBytes());
+        }
+    }
+
+    @Test
     void armazenaMuitasChavesIndependentes() {
         for (int i = 0; i < 10; i++) {
             String key = "test/multi-" + i + ".bin";
