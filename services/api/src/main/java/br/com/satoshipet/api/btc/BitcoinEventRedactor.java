@@ -1,5 +1,6 @@
 package br.com.satoshipet.api.btc;
 
+import br.com.satoshipet.api.platform.CorrelationIdContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -57,7 +58,8 @@ public class BitcoinEventRedactor {
      *
      * @param eventType     tipo do evento (ex: "BITCOIN_TRANSACTION_OBSERVED")
      * @param payload       mapa de campos do payload bruto (nunca enviado sem redação)
-     * @param correlationId identificador de correlação (pode ser nulo)
+     * @param correlationId identificador de correlação (opcional; o contexto
+     *                      atual ou um novo UUID é usado quando ausente)
      * @param causationId   identificador de causação (pode ser nulo)
      * @return JSON string do envelope redagido, pronto para persistir no outbox
      * @throws IllegalArgumentException se o eventType não estiver na política
@@ -84,8 +86,7 @@ public class BitcoinEventRedactor {
         envelope.put("eventType", eventType);
         envelope.put("schemaVersion", SCHEMA_VERSION);
         envelope.put("occurredAt", Instant.now().toString());
-        if (correlationId != null) envelope.put("correlationId", correlationId);
-        else envelope.putNull("correlationId");
+        envelope.put("correlationId", CorrelationIdContext.resolve(correlationId));
         if (causationId != null) envelope.put("causationId", causationId);
         else envelope.putNull("causationId");
         envelope.set("payload", redactedPayload);

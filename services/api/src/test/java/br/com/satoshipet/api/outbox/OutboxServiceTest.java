@@ -42,7 +42,22 @@ class OutboxServiceTest {
         assertEquals("BITCOIN_TRANSACTION_OBSERVED", saved.eventType);
         assertNotNull(saved.createdAt);
         assertNotNull(saved.payload);
+        assertEquals(UUID.fromString(saved.correlationId).toString(), saved.correlationId);
         assertEquals(0, saved.retries);
+    }
+
+    @Test
+    @Transactional
+    void geraCorrelationIdQuandoChamadorNaoFornece() {
+        UUID id = UUID.randomUUID();
+
+        outboxService.save(id, "Account", id.toString(), "TEST_EVENT", "{}", null);
+
+        OutboxEvent saved = OutboxEvent.findById(id);
+        assertNotNull(saved);
+        assertNotNull(saved.correlationId);
+        assertEquals(36, saved.correlationId.length());
+        assertNotNull(UUID.fromString(saved.correlationId));
     }
 
     @Test

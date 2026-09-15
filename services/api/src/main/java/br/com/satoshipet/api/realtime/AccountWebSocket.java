@@ -1,5 +1,6 @@
 package br.com.satoshipet.api.realtime;
 
+import br.com.satoshipet.api.platform.CorrelationIdContext;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.websockets.next.OnClose;
@@ -38,32 +39,38 @@ public class AccountWebSocket {
     /** Envia snapshot inicial com estado mínimo da conta. */
     @OnOpen
     public String onOpen(WebSocketConnection connection) {
-        String accountId = connection.pathParam("accountId");
-        LOG.debugf("Nova conexão no canal account:%s id=%s", accountId, connection.id());
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
+            String accountId = connection.pathParam("accountId");
+            LOG.debugf("Nova conexão no canal account:%s id=%s", accountId, connection.id());
 
-        AccountSnapshot snapshot = new AccountSnapshot(accountId);
-        return serializeOrNull(new WebSocketSnapshot<>(WebSocketCursor.initial(), snapshot));
+            AccountSnapshot snapshot = new AccountSnapshot(accountId);
+            return serializeOrNull(new WebSocketSnapshot<>(WebSocketCursor.initial(), snapshot));
+        }
     }
 
     /** Processa PONG do heartbeat. */
     @OnTextMessage
     public String onMessage(WebSocketConnection connection, String rawMessage) {
-        try {
-            WebSocketClientMessage msg = objectMapper.readValue(rawMessage, WebSocketClientMessage.class);
-            if ("PONG".equals(msg.type())) {
-                LOG.debugf("PONG recebido de account=%s", connection.pathParam("accountId"));
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
+            try {
+                WebSocketClientMessage msg = objectMapper.readValue(rawMessage, WebSocketClientMessage.class);
+                if ("PONG".equals(msg.type())) {
+                    LOG.debugf("PONG recebido de account=%s", connection.pathParam("accountId"));
+                }
+            } catch (JsonProcessingException e) {
+                LOG.warnf("Mensagem inválida de %s", connection.id());
             }
-        } catch (JsonProcessingException e) {
-            LOG.warnf("Mensagem inválida de %s", connection.id());
+            return null;
         }
-        return null;
     }
 
     /** Loga fechamento da conexão. */
     @OnClose
     public void onClose(WebSocketConnection connection) {
-        LOG.debugf("Conexão encerrada: account:%s id=%s",
-                connection.pathParam("accountId"), connection.id());
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
+            LOG.debugf("Conexão encerrada: account:%s id=%s",
+                    connection.pathParam("accountId"), connection.id());
+        }
     }
 
     /**
