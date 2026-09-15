@@ -4,6 +4,7 @@ import br.com.satoshipet.api.account.Address;
 import br.com.satoshipet.api.outbox.OutboxService;
 import br.com.satoshipet.api.pet.Pet;
 import br.com.satoshipet.api.pet.PetLifecyclePort;
+import br.com.satoshipet.api.platform.CorrelationIdContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -97,6 +98,12 @@ public class BitcoinMonitorService {
      */
     @Transactional
     public void pollAddress(Address address) {
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(CorrelationIdContext.current())) {
+            pollAddressWithContext(address);
+        }
+    }
+
+    private void pollAddressWithContext(Address address) {
         Instant now = Instant.now();
         LOG.debugf("Polling endereço=%s", address.canonical);
 
@@ -286,29 +293,31 @@ public class BitcoinMonitorService {
      */
     @Transactional
     public void handleReorg(String txid, Map<String, Object> reorgEvent, Instant now) {
-        BitcoinTransaction.findByTxid(txid).ifPresent(tx -> {
-            if (tx.status != BitcoinTransaction.Status.CONFIRMED) return;
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(CorrelationIdContext.current())) {
+            BitcoinTransaction.findByTxid(txid).ifPresent(tx -> {
+                if (tx.status != BitcoinTransaction.Status.CONFIRMED) return;
 
-            LOG.warnf("Reorg detectado: txid=%s retorna à mempool", txid);
-            tx.status      = BitcoinTransaction.Status.PENDING;
-            tx.confirmedAt = null;
-            tx.blockHeight = null;
-            tx.blockHash   = null;
+                LOG.warnf("Reorg detectado: txid=%s retorna à mempool", txid);
+                tx.status      = BitcoinTransaction.Status.PENDING;
+                tx.confirmedAt = null;
+                tx.blockHeight = null;
+                tx.blockHash   = null;
 
-            LogicalReceipt.findByAddressAndTxid(tx.address, txid).ifPresent(r -> {
-                r.pendingSats   = r.confirmedSats;
-                r.confirmedSats = 0L;
-                r.updatedAt     = now.isBefore(r.createdAt) ? r.createdAt : now;
-                long pendingAmount = r.pendingSats;
-                notifyPet(tx.address, pet -> {
-                    petLifecycle.onReceiptObserved(pet.id, r.id, pendingAmount, false, now);
-                    long[] totals = localReceiptTotals(tx.address);
-                    petLifecycle.onBalanceKnown(pet.id, totals[0], totals[1], now);
+                LogicalReceipt.findByAddressAndTxid(tx.address, txid).ifPresent(r -> {
+                    r.pendingSats   = r.confirmedSats;
+                    r.confirmedSats = 0L;
+                    r.updatedAt     = now.isBefore(r.createdAt) ? r.createdAt : now;
+                    long pendingAmount = r.pendingSats;
+                    notifyPet(tx.address, pet -> {
+                        petLifecycle.onReceiptObserved(pet.id, r.id, pendingAmount, false, now);
+                        long[] totals = localReceiptTotals(tx.address);
+                        petLifecycle.onBalanceKnown(pet.id, totals[0], totals[1], now);
+                    });
                 });
-            });
 
-            emitChainReorgEvent(tx.address, tx, reorgEvent, now);
-        });
+                emitChainReorgEvent(tx.address, tx, reorgEvent, now);
+            });
+        }
     }
 
     // -------------------------------------------------------------------------

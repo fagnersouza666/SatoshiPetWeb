@@ -2,6 +2,7 @@ package br.com.satoshipet.api.btc;
 
 import br.com.satoshipet.api.account.Address;
 import br.com.satoshipet.api.job.JobLockService;
+import br.com.satoshipet.api.platform.CorrelationIdContext;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -58,7 +59,9 @@ public class BitcoinMonitorJob {
         }
 
         try {
-            runPollCycle();
+            try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
+                runPollCycle();
+            }
         } finally {
             jobLockService.release(JOB_NAME, ownerId);
         }

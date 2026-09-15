@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -50,6 +51,16 @@ class BitcoinEventRedactorTest {
         assertEquals("corr-1", envelope.get("correlationId").asText());
         assertTrue(envelope.get("causationId").isNull(), "causationId deve ser null");
         assertNotNull(envelope.get("payload"),       "payload deve estar presente");
+    }
+
+    @Test
+    void geraCorrelationIdQuandoNaoRecebeContextoExplicito() throws Exception {
+        String json = redactor.redact(
+                "BITCOIN_TRANSACTION_OBSERVED", buildTransactionObservedPayload(), null, null);
+
+        String correlationId = mapper.readTree(json).get("correlationId").asText();
+        assertEquals(36, correlationId.length());
+        assertNotNull(UUID.fromString(correlationId));
     }
 
     // -------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 package br.com.satoshipet.api.realtime;
 
+import br.com.satoshipet.api.platform.CorrelationIdContext;
 import br.com.satoshipet.api.pet.PetPublicSnapshot;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -57,13 +58,15 @@ public class AddressWebSocket {
     @OnOpen
     @Transactional
     public String onOpen(WebSocketConnection connection) {
-        String canonical = connection.pathParam("canonical");
-        LOG.debugf("Nova conexão no canal address:%s id=%s", canonical, connection.id());
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
+            String canonical = connection.pathParam("canonical");
+            LOG.debugf("Nova conexão no canal address:%s id=%s", canonical, connection.id());
 
-        String cursor = cursorService.currentCursor(canonical);
-        AddressSnapshot stateData = AddressSnapshot.fromPet(
-                canonical, PetPublicSnapshot.fromCanonical(canonical), null);
-        return serializeOrNull(new WebSocketSnapshot<>(WebSocketCursor.of(cursor), stateData));
+            String cursor = cursorService.currentCursor(canonical);
+            AddressSnapshot stateData = AddressSnapshot.fromPet(
+                    canonical, PetPublicSnapshot.fromCanonical(canonical), null);
+            return serializeOrNull(new WebSocketSnapshot<>(WebSocketCursor.of(cursor), stateData));
+        }
     }
 
     /**
@@ -73,10 +76,11 @@ public class AddressWebSocket {
     @OnTextMessage
     @Transactional
     public String onMessage(WebSocketConnection connection, String rawMessage) {
-        try {
-            WebSocketClientMessage msg = objectMapper.readValue(rawMessage, WebSocketClientMessage.class);
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
+            try {
+                WebSocketClientMessage msg = objectMapper.readValue(rawMessage, WebSocketClientMessage.class);
 
-            return switch (msg.type()) {
+                return switch (msg.type()) {
                 case "PONG" -> {
                     LOG.debugf("PONG recebido de %s", connection.id());
                     yield null; // sem resposta ao PONG
@@ -128,19 +132,22 @@ public class AddressWebSocket {
                     LOG.warnf("Mensagem desconhecida type=%s de %s", msg.type(), connection.id());
                     yield null;
                 }
-            };
+                };
 
-        } catch (JsonProcessingException e) {
-            LOG.warnf("Mensagem inválida de %s: %s", connection.id(), rawMessage);
-            return null;
+            } catch (JsonProcessingException e) {
+                LOG.warnf("Mensagem inválida de %s: %s", connection.id(), rawMessage);
+                return null;
+            }
         }
     }
 
     /** Loga o fechamento da conexão. */
     @OnClose
     public void onClose(WebSocketConnection connection) {
-        LOG.debugf("Conexão encerrada: address:%s id=%s",
-                connection.pathParam("canonical"), connection.id());
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
+            LOG.debugf("Conexão encerrada: address:%s id=%s",
+                    connection.pathParam("canonical"), connection.id());
+        }
     }
 
     /**

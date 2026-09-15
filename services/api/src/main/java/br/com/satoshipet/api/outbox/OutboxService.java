@@ -1,5 +1,6 @@
 package br.com.satoshipet.api.outbox;
 
+import br.com.satoshipet.api.platform.CorrelationIdContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 
@@ -48,7 +49,7 @@ public class OutboxService {
                 eventType,
                 payload,
                 Instant.now(),
-                correlationId
+                CorrelationIdContext.resolve(correlationId)
         );
         event.persist();
     }

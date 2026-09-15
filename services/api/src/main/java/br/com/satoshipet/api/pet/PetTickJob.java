@@ -1,6 +1,7 @@
 package br.com.satoshipet.api.pet;
 
 import br.com.satoshipet.api.job.JobLockService;
+import br.com.satoshipet.api.platform.CorrelationIdContext;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -46,7 +47,9 @@ public class PetTickJob {
             return;
         }
         try {
-            runTickCycle();
+            try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
+                runTickCycle();
+            }
         } finally {
             jobLockService.release(JOB_NAME, ownerId);
         }
