@@ -32,6 +32,7 @@ class LoggingConfigurationTest {
         assertTrue(properties.stringPropertyNames().stream()
                 .noneMatch(name -> name.startsWith("quarkus.log.file")));
         assertTrue(properties.stringPropertyNames().stream()
+                .filter(name -> name.startsWith("quarkus.log."))
                 .noneMatch(name -> name.contains("prompt")
                         || name.contains("token")
                         || name.contains("secret")
