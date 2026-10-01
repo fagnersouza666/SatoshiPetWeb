@@ -171,7 +171,9 @@ describe('PrivateCacheService', () => {
 
     expect(deleteCache).toHaveBeenCalledExactlyOnceWith('private-account-data');
     expect(openCache).toHaveBeenCalledExactlyOnceWith('ngsw:db:version:api-freshness');
-    expect(deleteEntry).toHaveBeenCalledExactlyOnceWith(new Request(privateUrl));
+    expect(deleteEntry).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ url: privateUrl }),
+    );
     expect(entries.has(privateUrl)).toBe(false);
     expect([...entries]).toEqual([
       [firstUrl, 'sprite-a-v1'],
