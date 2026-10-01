@@ -142,4 +142,41 @@ describe('PrivateCacheService', () => {
     await expect(service.clearPrivateCaches()).resolves.toBeUndefined();
     expect(secondDeleteSpy).toHaveBeenCalledWith(privateRequest);
   });
+
+  it('deve preservar sprites de duas criaturas e versões ao limpar dados privados', async () => {
+    const firstUrl = 'https://satoshi.pet/api/v1/public/addresses/criatura-a/artwork/1/atlas.png';
+    const nextVersionUrl =
+      'https://satoshi.pet/api/v1/public/addresses/criatura-a/artwork/2/atlas.png';
+    const secondUrl = 'https://satoshi.pet/api/v1/public/addresses/criatura-b/artwork/1/atlas.png';
+    const privateUrl = 'https://satoshi.pet/api/v1/account/pet/artwork/preview/atlas.png';
+    const entries = new Map([
+      [firstUrl, 'sprite-a-v1'],
+      [nextVersionUrl, 'sprite-a-v2'],
+      [secondUrl, 'sprite-b-v1'],
+      [privateUrl, 'preview-privado'],
+    ]);
+    const deleteEntry = vi.fn(async (request: Request) => entries.delete(request.url));
+    const openCache = vi.fn().mockResolvedValue({
+      keys: vi.fn(async () => [...entries.keys()].map((url) => new Request(url))),
+      delete: deleteEntry,
+    });
+    const deleteCache = vi.fn().mockResolvedValue(true);
+    vi.stubGlobal('caches', {
+      keys: vi.fn().mockResolvedValue(['private-account-data', 'ngsw:db:version:api-freshness']),
+      open: openCache,
+      delete: deleteCache,
+    });
+
+    await service.clearPrivateCaches();
+
+    expect(deleteCache).toHaveBeenCalledExactlyOnceWith('private-account-data');
+    expect(openCache).toHaveBeenCalledExactlyOnceWith('ngsw:db:version:api-freshness');
+    expect(deleteEntry).toHaveBeenCalledExactlyOnceWith(new Request(privateUrl));
+    expect(entries.has(privateUrl)).toBe(false);
+    expect([...entries]).toEqual([
+      [firstUrl, 'sprite-a-v1'],
+      [nextVersionUrl, 'sprite-a-v2'],
+      [secondUrl, 'sprite-b-v1'],
+    ]);
+  });
 });
