@@ -17,3 +17,12 @@ pessoal.
 O canal privado continua validando a sessão da conta antes de enviar snapshots
 ou aceitar mensagens. A correlação não substitui a autorização e seu contexto
 é restaurado ao encerrar cada callback, inclusive em rejeições.
+
+Nos jobs de monitoramento Bitcoin, tique do pet e geração de arte, um novo
+ID abrange a tentativa de adquirir a trava, o processamento, o registro de
+erros e a liberação. Ciclos sem trava também têm um ID próprio. Ao terminar,
+o contexto anterior é restaurado, inclusive se a aquisição, o processamento
+ou a liberação falharem.
+
+Mensagens JSON inválidas no WebSocket de endereço geram aviso com o ID da
+conexão e o MDC correspondente; o conteúdo bruto recebido não é registrado.

@@ -135,7 +135,7 @@ public class AddressWebSocket {
                 };
 
             } catch (JsonProcessingException e) {
-                LOG.warnf("Mensagem inválida de %s: %s", connection.id(), rawMessage);
+                LOG.warnf("Mensagem inválida de %s", connection.id());
                 return null;
             }
         }

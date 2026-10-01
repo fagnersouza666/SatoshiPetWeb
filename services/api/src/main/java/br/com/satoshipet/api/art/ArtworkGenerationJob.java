@@ -32,17 +32,17 @@ public class ArtworkGenerationJob {
 
     @Scheduled(every = "30s", identity = JOB_NAME)
     public void tick() {
-        if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
-            return;
-        }
-        try {
-            try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
-                pipeline.processReadyWorkloads(Instant.now());
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
+            if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
+                return;
             }
-        } catch (Exception e) {
-            LOG.errorf(e, "Falha no ciclo de geração de arte");
-        } finally {
-            jobLockService.release(JOB_NAME, ownerId);
+            try {
+                pipeline.processReadyWorkloads(Instant.now());
+            } catch (Exception e) {
+                LOG.errorf(e, "Falha no ciclo de geração de arte");
+            } finally {
+                jobLockService.release(JOB_NAME, ownerId);
+            }
         }
     }
 }
