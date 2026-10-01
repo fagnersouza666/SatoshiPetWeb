@@ -2,6 +2,7 @@ package br.com.satoshipet.api.realtime;
 
 import br.com.satoshipet.api.account.SessionService;
 import br.com.satoshipet.api.platform.SessionAuthFilter;
+import br.com.satoshipet.api.platform.CorrelationIdContext;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -59,45 +60,51 @@ public class AccountWebSocket {
     @OnOpen
     @Transactional
     public String onOpen(WebSocketConnection connection) {
-        Optional<UUID> requestedAccount = requestedAccountId(connection);
-        if (requestedAccount.isEmpty() || !isAuthorized(connection, requestedAccount.get())) {
-            reject(connection);
-            return null;
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
+            Optional<UUID> requestedAccount = requestedAccountId(connection);
+            if (requestedAccount.isEmpty() || !isAuthorized(connection, requestedAccount.get())) {
+                reject(connection);
+                return null;
+            }
+
+            String accountId = requestedAccount.get().toString();
+            LOG.debugf("Nova conexão no canal privado account:%s id=%s", accountId, connection.id());
+
+            AccountSnapshot snapshot = new AccountSnapshot(accountId);
+            return serializeOrNull(new WebSocketSnapshot<>(WebSocketCursor.initial(), snapshot));
         }
-
-        String accountId = requestedAccount.get().toString();
-        LOG.debugf("Nova conexão no canal privado account:%s id=%s", accountId, connection.id());
-
-        AccountSnapshot snapshot = new AccountSnapshot(accountId);
-        return serializeOrNull(new WebSocketSnapshot<>(WebSocketCursor.initial(), snapshot));
     }
 
     /** Processa PONG do heartbeat sem aceitar mensagens de uma sessão revogada. */
     @OnTextMessage
     @Transactional
     public String onMessage(WebSocketConnection connection, String rawMessage) {
-        Optional<UUID> requestedAccount = requestedAccountId(connection);
-        if (requestedAccount.isEmpty() || !isAuthorized(connection, requestedAccount.get())) {
-            reject(connection);
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
+            Optional<UUID> requestedAccount = requestedAccountId(connection);
+            if (requestedAccount.isEmpty() || !isAuthorized(connection, requestedAccount.get())) {
+                reject(connection);
+                return null;
+            }
+
+            try {
+                WebSocketClientMessage message = objectMapper.readValue(rawMessage, WebSocketClientMessage.class);
+                if ("PONG".equals(message.type())) {
+                    LOG.debugf("PONG recebido de account=%s", requestedAccount.get());
+                }
+            } catch (JsonProcessingException e) {
+                LOG.warnf("Mensagem inválida de %s", connection.id());
+            }
             return null;
         }
-
-        try {
-            WebSocketClientMessage message = objectMapper.readValue(rawMessage, WebSocketClientMessage.class);
-            if ("PONG".equals(message.type())) {
-                LOG.debugf("PONG recebido de account=%s", requestedAccount.get());
-            }
-        } catch (JsonProcessingException e) {
-            LOG.warnf("Mensagem inválida de %s", connection.id());
-        }
-        return null;
     }
 
     /** Loga fechamento da conexão. */
     @OnClose
     public void onClose(WebSocketConnection connection) {
-        LOG.debugf("Conexão encerrada: account:%s id=%s",
-                connection.pathParam("accountId"), connection.id());
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
+            LOG.debugf("Conexão encerrada: account:%s id=%s",
+                    connection.pathParam("accountId"), connection.id());
+        }
     }
 
     /**

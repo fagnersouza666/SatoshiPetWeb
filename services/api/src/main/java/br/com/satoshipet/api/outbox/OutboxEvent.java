@@ -1,5 +1,6 @@
 package br.com.satoshipet.api.outbox;
 
+import br.com.satoshipet.api.events.DomainEventType;
 import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -89,6 +90,19 @@ public class OutboxEvent extends PanacheEntityBase {
         );
     }
 
+    /** Cria um evento usando o catálogo único de tipos de domínio. */
+    public static OutboxEvent create(
+            String aggregateType,
+            String aggregateId,
+            DomainEventType eventType,
+            String payload,
+            Instant createdAt,
+            String correlationId
+    ) {
+        Objects.requireNonNull(eventType, "eventType");
+        return create(aggregateType, aggregateId, eventType.value(), payload, createdAt, correlationId);
+    }
+
     /** Cria um evento com id explícito (chave de idempotência do outbox). */
     public static OutboxEvent createWithId(
             UUID id,
@@ -116,6 +130,20 @@ public class OutboxEvent extends PanacheEntityBase {
         event.correlationId = correlationId;
         event.retries = 0;
         return event;
+    }
+
+    /** Cria um evento com ID explícito usando o catálogo único de tipos. */
+    public static OutboxEvent createWithId(
+            UUID id,
+            String aggregateType,
+            String aggregateId,
+            DomainEventType eventType,
+            String payload,
+            Instant createdAt,
+            String correlationId
+    ) {
+        Objects.requireNonNull(eventType, "eventType");
+        return createWithId(id, aggregateType, aggregateId, eventType.value(), payload, createdAt, correlationId);
     }
 
     /**

@@ -1,6 +1,7 @@
 package br.com.satoshipet.api.pet;
 
 import br.com.satoshipet.api.job.JobLockService;
+import br.com.satoshipet.api.platform.CorrelationIdContext;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -41,14 +42,16 @@ public class PetTickJob {
 
     @Scheduled(every = "60s", identity = JOB_NAME)
     public void tick() {
-        if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
-            LOG.debugf("Lock do job '%s' detido por outra instância — ciclo ignorado", JOB_NAME);
-            return;
-        }
-        try {
-            runTickCycle();
-        } finally {
-            jobLockService.release(JOB_NAME, ownerId);
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
+            if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
+                LOG.debugf("Lock do job '%s' detido por outra instância — ciclo ignorado", JOB_NAME);
+                return;
+            }
+            try {
+                runTickCycle();
+            } finally {
+                jobLockService.release(JOB_NAME, ownerId);
+            }
         }
     }
 

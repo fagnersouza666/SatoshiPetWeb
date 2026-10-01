@@ -1,5 +1,6 @@
 package br.com.satoshipet.api.outbox;
 
+import br.com.satoshipet.api.platform.CorrelationIdContext;
 import br.com.satoshipet.api.job.JobLockService;
 import io.quarkus.arc.All;
 import io.quarkus.scheduler.Scheduled;
@@ -124,6 +125,12 @@ public class OutboxPublisher {
     }
 
     private void dispatchEvent(OutboxEvent event) {
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(event.correlationId)) {
+            dispatchEventWithContext(event);
+        }
+    }
+
+    private void dispatchEventWithContext(OutboxEvent event) {
         List<OutboxConsumer> matched = consumers.stream()
                 .filter(c -> c.supports(event.eventType))
                 .toList();

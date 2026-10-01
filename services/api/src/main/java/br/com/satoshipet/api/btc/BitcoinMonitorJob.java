@@ -2,6 +2,7 @@ package br.com.satoshipet.api.btc;
 
 import br.com.satoshipet.api.account.Address;
 import br.com.satoshipet.api.job.JobLockService;
+import br.com.satoshipet.api.platform.CorrelationIdContext;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -52,15 +53,16 @@ public class BitcoinMonitorJob {
      */
     @Scheduled(every = "60s", identity = JOB_NAME)
     public void poll() {
-        if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
-            LOG.debugf("Lock do job '%s' detido por outra instância — ciclo ignorado", JOB_NAME);
-            return;
-        }
-
-        try {
-            runPollCycle();
-        } finally {
-            jobLockService.release(JOB_NAME, ownerId);
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
+            if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
+                LOG.debugf("Lock do job '%s' detido por outra instância — ciclo ignorado", JOB_NAME);
+                return;
+            }
+            try {
+                runPollCycle();
+            } finally {
+                jobLockService.release(JOB_NAME, ownerId);
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 package br.com.satoshipet.api.art;
 
 import br.com.satoshipet.api.job.JobLockService;
+import br.com.satoshipet.api.platform.CorrelationIdContext;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -31,15 +32,17 @@ public class ArtworkGenerationJob {
 
     @Scheduled(every = "30s", identity = JOB_NAME)
     public void tick() {
-        if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
-            return;
-        }
-        try {
-            pipeline.processReadyWorkloads(Instant.now());
-        } catch (Exception e) {
-            LOG.errorf(e, "Falha no ciclo de geração de arte");
-        } finally {
-            jobLockService.release(JOB_NAME, ownerId);
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
+            if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
+                return;
+            }
+            try {
+                pipeline.processReadyWorkloads(Instant.now());
+            } catch (Exception e) {
+                LOG.errorf(e, "Falha no ciclo de geração de arte");
+            } finally {
+                jobLockService.release(JOB_NAME, ownerId);
+            }
         }
     }
 }

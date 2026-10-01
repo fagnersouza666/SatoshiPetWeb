@@ -3,9 +3,9 @@ package br.com.satoshipet.api.storage;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.images.builder.ImageFromDockerfile;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.DockerImageName;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @Testcontainers(disabledWithoutDocker = true)
 class MinioObjectStorageTest {
 
-    private static final String MINIO_IMAGE = "quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z";
+    private static final String MINIO_IMAGE = "satoshi-pet-minio-test:07c3a429bfed";
     private static final int S3_PORT = 9000;
     private static final String ACCESS_KEY = "test-access-key";
     private static final String SECRET_KEY = "test-secret-key";
@@ -27,7 +27,9 @@ class MinioObjectStorageTest {
     private static final String STAGING_BUCKET = "pet-artwork-staging";
 
     @Container
-    static final GenericContainer<?> minio = new GenericContainer<>(DockerImageName.parse(MINIO_IMAGE))
+    static final GenericContainer<?> minio = new GenericContainer<>(
+            new ImageFromDockerfile(MINIO_IMAGE, true)
+                    .withFileFromClasspath("Dockerfile", "minio/Dockerfile"))
             .withEnv("MINIO_ROOT_USER", ACCESS_KEY)
             .withEnv("MINIO_ROOT_PASSWORD", SECRET_KEY)
             .withExposedPorts(S3_PORT)
