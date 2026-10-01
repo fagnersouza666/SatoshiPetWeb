@@ -53,17 +53,16 @@ public class BitcoinMonitorJob {
      */
     @Scheduled(every = "60s", identity = JOB_NAME)
     public void poll() {
-        if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
-            LOG.debugf("Lock do job '%s' detido por outra instância — ciclo ignorado", JOB_NAME);
-            return;
-        }
-
-        try {
-            try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
-                runPollCycle();
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
+            if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
+                LOG.debugf("Lock do job '%s' detido por outra instância — ciclo ignorado", JOB_NAME);
+                return;
             }
-        } finally {
-            jobLockService.release(JOB_NAME, ownerId);
+            try {
+                runPollCycle();
+            } finally {
+                jobLockService.release(JOB_NAME, ownerId);
+            }
         }
     }
 

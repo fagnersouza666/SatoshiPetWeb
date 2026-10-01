@@ -42,16 +42,16 @@ public class PetTickJob {
 
     @Scheduled(every = "60s", identity = JOB_NAME)
     public void tick() {
-        if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
-            LOG.debugf("Lock do job '%s' detido por outra instância — ciclo ignorado", JOB_NAME);
-            return;
-        }
-        try {
-            try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
-                runTickCycle();
+        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
+            if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
+                LOG.debugf("Lock do job '%s' detido por outra instância — ciclo ignorado", JOB_NAME);
+                return;
             }
-        } finally {
-            jobLockService.release(JOB_NAME, ownerId);
+            try {
+                runTickCycle();
+            } finally {
+                jobLockService.release(JOB_NAME, ownerId);
+            }
         }
     }
 
