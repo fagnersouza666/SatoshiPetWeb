@@ -69,6 +69,25 @@ Evento incremental `PET_ARTWORK_READY` usa o schema
 
 O replay usa ring buffer em memória por endereço (suficiente para FUND).
 
+## Canal privado por conta
+
+O canal privado separado usa:
+
+```
+wss://{host}/api/ws/account/{accountId}
+```
+
+O navegador envia o cookie de sessão `sp_session` no handshake. O servidor só
+aceita a conexão quando a sessão está ativa e pertence ao mesmo `accountId` da
+rota. Cookie ausente, expirado, inválido ou pertencente a outra conta encerra
+o canal com código WebSocket 1008; nenhum `SNAPSHOT` é enviado nesses casos.
+
+O snapshot privado contém somente o identificador da própria conta. Eventos
+privados futuros devem ter contrato e DTO próprios; o consumidor da outbox não
+faz fan-out de eventos públicos `PET_*` para esse canal. Assim, o canal por
+endereço permanece anônimo e público, enquanto dados por conta não podem ser
+obtidos apenas alterando o `accountId` da URL.
+
 ## Integração outbox
 
 `OutboxWebSocketConsumer` publica eventos cujo tipo começa com `BITCOIN_`,
