@@ -23,3 +23,6 @@ ID abrange a tentativa de adquirir a trava, o processamento, o registro de
 erros e a liberação. Ciclos sem trava também têm um ID próprio. Ao terminar,
 o contexto anterior é restaurado, inclusive se a aquisição, o processamento
 ou a liberação falharem.
+
+Mensagens JSON inválidas no WebSocket de endereço geram aviso com o ID da
+conexão e o MDC correspondente; o conteúdo bruto recebido não é registrado.
