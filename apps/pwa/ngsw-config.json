@@ -23,6 +23,7 @@
       "updateMode": "prefetch",
       "resources": {
         "files": [
+          "/icons/icon-32x32.png",
           "/icons/icon-72x72.png",
           "/icons/icon-96x96.png",
           "/icons/icon-128x128.png",

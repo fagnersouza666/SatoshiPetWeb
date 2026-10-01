@@ -12,7 +12,7 @@
     "build": "npm run build:pwa && npm run build:api",
     "build:pwa": "npm --prefix apps/pwa run build",
     "build:api": "node scripts/mvnw.mjs package -DskipTests",
-    "test": "npm run test:versao && npm run test:infra && npm run test:csp && npm run test:ci && npm run test:pwa && npm run test:pwa:contract && npm run test:api",
+    "test": "npm run test:versao && npm run test:infra && npm run test:csp && npm run test:ci && npm run test:ngsw && npm run test:pwa && npm run test:pwa:contract && npm run test:api",
     "test:versao": "node infra/scripts/versao.test.mjs",
     "test:infra": "sh infra/minio/init-buckets.test.sh",
     "test:csp": "node --test infra/scripts/csp.test.mjs",
@@ -24,6 +24,7 @@
     "verify": "node infra/scripts/versao.mjs verificar && npm run test:pwa && node scripts/mvnw.mjs verify",
     "versao": "node infra/scripts/versao.mjs",
     "check:pwa": "node infra/scripts/check-pwa.mjs",
-    "check:api": "node infra/scripts/check-api.mjs"
+    "check:api": "node infra/scripts/check-api.mjs",
+    "test:ngsw": "node --test infra/scripts/ngsw-config.test.mjs"
   }
 }
