@@ -1,5 +1,6 @@
 package br.com.satoshipet.api.outbox;
 
+import br.com.satoshipet.api.events.DomainEventType;
 import br.com.satoshipet.api.platform.CorrelationIdContext;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
@@ -32,25 +33,61 @@ public class OutboxService {
             String payload,
             String correlationId
     ) {
-        Objects.requireNonNull(id, "id");
-        Objects.requireNonNull(aggregateType, "aggregateType");
-        Objects.requireNonNull(aggregateId, "aggregateId");
-        Objects.requireNonNull(eventType, "eventType");
-        Objects.requireNonNull(payload, "payload");
-
-        if (OutboxEvent.findById(id) != null) {
-            return;
-        }
-
-        OutboxEvent event = OutboxEvent.createWithId(
+        save(OutboxEvent.createWithId(
                 id,
                 aggregateType,
                 aggregateId,
                 eventType,
                 payload,
                 Instant.now(),
-                CorrelationIdContext.resolve(correlationId)
-        );
-        event.persist();
+                correlationId
+        ));
+    }
+
+    /**
+     * Persiste um evento já construído na transação corrente.
+     *
+     * <p>O evento e a alteração do agregado devem ser enviados à mesma
+     * transação pelo serviço de aplicação. A exigência {@code MANDATORY}
+     * impede que uma chamada acidental crie uma transação independente e
+     * deixe o estado do agregado sem o respectivo evento.</p>
+     *
+     * <p>A consulta pela chave primária torna a operação idempotente para
+     * reprocessamentos que reutilizam o mesmo ID lógico. O registro existente
+     * nunca é atualizado por uma retransmissão.</p>
+     */
+    @Transactional(Transactional.TxType.MANDATORY)
+    public void save(OutboxEvent event) {
+        Objects.requireNonNull(event, "event");
+        Objects.requireNonNull(event.id, "event.id");
+        Objects.requireNonNull(event.aggregateType, "event.aggregateType");
+        Objects.requireNonNull(event.aggregateId, "event.aggregateId");
+        Objects.requireNonNull(event.eventType, "event.eventType");
+        Objects.requireNonNull(event.payload, "event.payload");
+        Objects.requireNonNull(event.createdAt, "event.createdAt");
+
+        if (OutboxEvent.findById(event.id) == null) {
+            event.correlationId = CorrelationIdContext.resolve(event.correlationId);
+            event.persist();
+        }
+    }
+
+    /**
+     * Persiste um evento usando o tipo oficial do catálogo da fundação.
+     *
+     * <p>A sobrecarga textual permanece para compatibilidade com integrações
+     * que ainda estão migrando e para eventos exclusivos de teste.</p>
+     */
+    @Transactional(Transactional.TxType.MANDATORY)
+    public void save(
+            UUID id,
+            String aggregateType,
+            String aggregateId,
+            DomainEventType eventType,
+            String payload,
+            String correlationId
+    ) {
+        Objects.requireNonNull(eventType, "eventType");
+        save(id, aggregateType, aggregateId, eventType.value(), payload, correlationId);
     }
 }
