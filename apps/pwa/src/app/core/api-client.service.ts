@@ -1,79 +1,65 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, map, tap } from 'rxjs';
 import { API_BASE_URL } from './api-config';
 
-/**
- * Wrapper centralizado do HttpClient.
- *
- * Garante para todas as requisições:
- * - URL base da API via token API_BASE_URL
- * - `withCredentials: true` (cookies de sessão)
- * - Header CSRF lido de cookie `XSRF-TOKEN` ou `<meta name="csrf-token">` (PLAY-08)
- */
+/** HTTP com cookie de sessão e o contrato CSRF emitido pela API. */
 @Injectable({ providedIn: 'root' })
 export class ApiClientService {
   private readonly http = inject(HttpClient);
   private readonly baseUrl = inject(API_BASE_URL);
+  // O segredo CSRF permanece apenas em memória; nunca é gravado em cache/storage.
+  private csrfToken: string | null = null;
 
-  /**
-   * Lê token CSRF do cookie `XSRF-TOKEN` (prioridade)
-   * ou do atributo `content` de `<meta name="csrf-token">` como fallback.
-   */
-  private csrfToken(): string | null {
-    if (typeof document === 'undefined') return null;
-
-    // 1. Cookie XSRF-TOKEN (definido pelo servidor em cada resposta)
-    const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
-    if (match?.[1]) {
-      return decodeURIComponent(match[1]);
-    }
-
-    // 2. Meta tag fallback (para SSR / configurações alternativas)
-    const meta = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]');
-    return meta?.content ?? null;
+  clearCsrfToken(): void {
+    this.csrfToken = null;
   }
 
-  private buildHeaders(): HttpHeaders {
+  private request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    params?: Record<string, string>,
+    cache?: RequestCache,
+  ): Observable<T> {
     let headers = new HttpHeaders({ 'Content-Type': 'application/json' });
-    const token = this.csrfToken();
-    if (token) {
-      headers = headers.set('X-XSRF-TOKEN', token);
-    }
-    return headers;
-  }
-
-  private buildUrl(path: string): string {
-    return `${this.baseUrl}${path}`;
+    if (this.csrfToken) headers = headers.set('X-CSRF-Token', this.csrfToken);
+    return this.http
+      .request<T>(method, `${this.baseUrl}${path}`, {
+        body,
+        headers,
+        withCredentials: true,
+        params: params ? new HttpParams({ fromObject: params }) : undefined,
+        observe: 'response',
+        cache,
+      })
+      .pipe(
+        tap((response) => {
+          const csrf = response.headers.get('X-CSRF-Token');
+          if (csrf) this.csrfToken = csrf;
+        }),
+        map((response) => response.body as T),
+      );
   }
 
   get<T>(path: string, params?: Record<string, string>): Observable<T> {
-    const httpParams = params ? new HttpParams({ fromObject: params }) : undefined;
-    return this.http.get<T>(this.buildUrl(path), {
-      headers: this.buildHeaders(),
-      withCredentials: true,
-      params: httpParams,
-    });
+    return this.request<T>('GET', path, undefined, params);
+  }
+
+  /** Identidade autenticada nunca pode vir de fallback offline ou cache HTTP. */
+  getFresh<T>(path: string): Observable<T> {
+    return this.request<T>('GET', path, undefined, { 'ngsw-bypass': 'true' }, 'no-store');
   }
 
   post<T>(path: string, body: unknown): Observable<T> {
-    return this.http.post<T>(this.buildUrl(path), body, {
-      headers: this.buildHeaders(),
-      withCredentials: true,
-    });
+    return this.request<T>('POST', path, body);
   }
 
   put<T>(path: string, body: unknown): Observable<T> {
-    return this.http.put<T>(this.buildUrl(path), body, {
-      headers: this.buildHeaders(),
-      withCredentials: true,
-    });
+    return this.request<T>('PUT', path, body);
   }
 
   delete<T>(path: string): Observable<T> {
-    return this.http.delete<T>(this.buildUrl(path), {
-      headers: this.buildHeaders(),
-      withCredentials: true,
-    });
+    return this.request<T>('DELETE', path);
   }
 }

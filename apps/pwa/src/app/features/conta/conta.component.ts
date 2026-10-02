@@ -241,6 +241,7 @@ export class ContaComponent {
   protected readonly erroLogout = signal<string | null>(null);
 
   protected async sair(): Promise<void> {
+    if (this.saindo()) return;
     this.saindo.set(true);
     this.erroLogout.set(null);
 

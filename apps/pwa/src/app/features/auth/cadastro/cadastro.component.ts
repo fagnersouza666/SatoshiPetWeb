@@ -315,10 +315,13 @@ export class CadastroComponent implements OnInit {
     const pendente = this.auth.pendingVerify();
     if (pendente) {
       this.emailPendente.set(pendente.email);
+    } else {
+      void this.router.navigate(['/entrar']);
     }
   }
 
   protected async registrar(): Promise<void> {
+    if (this.carregando() || !this.auth.pendingVerify()) return;
     this.form.markAllAsTouched();
     if (this.form.invalid) return;
 
