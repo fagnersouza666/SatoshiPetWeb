@@ -51,9 +51,12 @@ export class AddressWebSocketService {
   }
 
   private buildWsUrl(address: string): string {
-    const httpBase = this.apiBaseUrl.replace(/\/$/, '');
-    const wsBase = httpBase.replace(/^http/i, 'ws');
-    return `${wsBase}/api/ws/address/${encodeURIComponent(address)}`;
+    const url = new URL(
+      `${this.apiBaseUrl.replace(/\/$/, '')}/ws/address/${encodeURIComponent(address)}`,
+      window.location.href,
+    );
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    return url.toString();
   }
 
   private handleMessage(raw: unknown): void {

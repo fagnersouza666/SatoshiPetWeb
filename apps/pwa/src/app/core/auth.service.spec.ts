@@ -1,127 +1,279 @@
 import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideRouter, Router } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth.service';
-import { ApiClientService } from './api-client.service';
+import { API_BASE_URL } from './api-config';
 import { SessionService } from './session.service';
 import { PrivateCacheService } from './private-cache.service';
 
-describe('AuthService', () => {
+const accountResponse = {
+  id: 'account-1',
+  email: 'teste@example.invalid',
+  bitcoinAddress: 'bc1qteste',
+  petName: 'Satoshi',
+};
+const account = {
+  id: 'account-1',
+  email: 'teste@example.invalid',
+  address: 'bc1qteste',
+  petName: 'Satoshi',
+};
+
+describe('AuthService: contratos HTTP reais da API', () => {
   let service: AuthService;
-  let apiSpy: { post: ReturnType<typeof vi.fn> };
-  let sessionSpy: {
-    setSession: ReturnType<typeof vi.fn>;
-    clearSession: ReturnType<typeof vi.fn>;
-    isAuthenticated: ReturnType<typeof vi.fn>;
-  };
-  let cacheSpy: { clearPrivateCaches: ReturnType<typeof vi.fn> };
-  let router: Router;
+  let http: HttpTestingController;
+  let session: SessionService;
+  let navigate: ReturnType<typeof vi.spyOn>;
+  let clearCaches: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    apiSpy = { post: vi.fn() };
-    sessionSpy = {
-      setSession: vi.fn(),
-      clearSession: vi.fn(),
-      isAuthenticated: vi.fn().mockReturnValue(false),
-    };
-    cacheSpy = { clearPrivateCaches: vi.fn().mockResolvedValue(undefined) };
-
+    TestBed.resetTestingModule();
+    clearCaches = vi.fn().mockResolvedValue(undefined);
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
-        { provide: ApiClientService, useValue: apiSpy },
-        { provide: SessionService, useValue: sessionSpy },
-        { provide: PrivateCacheService, useValue: cacheSpy },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: API_BASE_URL, useValue: '/api' },
+        { provide: PrivateCacheService, useValue: { clearPrivateCaches: clearCaches } },
       ],
     });
-
     service = TestBed.inject(AuthService);
-    router = TestBed.inject(Router);
+    http = TestBed.inject(HttpTestingController);
+    session = TestBed.inject(SessionService);
+    navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+  });
+  afterEach(() => http.verify());
+
+  it('solicita magic-link na rota pública', async () => {
+    const result = firstValueFrom(service.requestMagicLink('teste@example.invalid'));
+    const request = http.expectOne('/api/v1/auth/magic-link');
+    expect(request.request.body).toEqual({ email: 'teste@example.invalid' });
+    request.flush(null, { status: 202, statusText: 'Accepted' });
+    await result;
   });
 
-  it('deve ser criado', () => {
-    expect(service).toBeTruthy();
-  });
-
-  it('requestMagicLink deve chamar POST /v1/auth/magic-link com o e-mail', () => {
-    apiSpy.post.mockReturnValue(of(undefined));
-    service.requestMagicLink('teste@satoshi.pet').subscribe();
-    expect(apiSpy.post).toHaveBeenCalledWith('/v1/auth/magic-link', { email: 'teste@satoshi.pet' });
-  });
-
-  it('verifyToken deve chamar POST /v1/auth/verify com o token', () => {
-    const mockResp = { email: 'x@y.com', isNewUser: false };
-    apiSpy.post.mockReturnValue(of(mockResp));
-    service.verifyToken('tok123').subscribe();
-    expect(apiSpy.post).toHaveBeenCalledWith('/v1/auth/verify', { token: 'tok123' });
-  });
-
-  it('register deve chamar POST /v1/auth/register com o payload', () => {
-    const payload = { address: 'bc1q123', petName: 'Satoshi' };
-    const mockAccount = { id: '1', email: 'x@y.com', ...payload };
-    apiSpy.post.mockReturnValue(of(mockAccount));
-    service.register(payload).subscribe();
-    expect(apiSpy.post).toHaveBeenCalledWith('/v1/auth/register', payload);
-  });
-
-  it('logout deve invalidar servidor, limpar cache, sessão e navegar nessa ordem', async () => {
-    const events: string[] = [];
-    apiSpy.post.mockImplementation(() => {
-      events.push('servidor');
-      return of(undefined);
+  it('traduz registrationRequired/verifiedEmail e preserva o token para cadastro', async () => {
+    const result = service.verifyAndNavigate('new-token');
+    http
+      .expectOne('/api/v1/auth/magic-link/verify')
+      .flush({ status: 'ok', registrationRequired: true, verifiedEmail: account.email });
+    await expect(result).resolves.toEqual({ email: account.email, isNewUser: true });
+    expect(service.pendingVerify()).toEqual({ email: account.email, isNewUser: true });
+    expect(session.isAuthenticated()).toBe(false);
+    expect(navigate).toHaveBeenCalledWith(['/cadastro']);
+    const registered = firstValueFrom(
+      service.register({ address: account.address, petName: account.petName }),
+    );
+    const request = http.expectOne('/api/v1/auth/register');
+    expect(request.request.body).toEqual({
+      token: 'new-token',
+      bitcoinAddress: account.address,
+      petName: account.petName,
     });
-    cacheSpy.clearPrivateCaches.mockImplementation(async () => {
-      events.push('cache');
-    });
-    sessionSpy.clearSession.mockImplementation(() => {
-      events.push('sessão');
-    });
-    const navigateSpy = vi.spyOn(router, 'navigate').mockImplementation(async () => {
-      events.push('navegação');
-      return true;
-    });
-
-    await service.logout();
-
-    expect(events).toEqual(['servidor', 'cache', 'sessão', 'navegação']);
-    expect(cacheSpy.clearPrivateCaches).toHaveBeenCalled();
-    expect(sessionSpy.clearSession).toHaveBeenCalled();
-    expect(navigateSpy).toHaveBeenCalledWith(['/entrar']);
-  });
-
-  it('logout deve continuar mesmo que a chamada ao servidor falhe', async () => {
-    apiSpy.post.mockReturnValue(throwError(() => new Error('Sessão expirada')));
-    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
-
-    await service.logout();
-
-    expect(cacheSpy.clearPrivateCaches).toHaveBeenCalled();
-    expect(sessionSpy.clearSession).toHaveBeenCalled();
-    expect(navigateSpy).toHaveBeenCalledWith(['/entrar']);
-  });
-
-  it('pendingVerify deve inicializar como null', () => {
+    request.flush(
+      { status: 'ok', accountId: account.id },
+      { status: 201, statusText: 'Created', headers: { 'X-CSRF-Token': 'csrf-registration' } },
+    );
+    http.expectOne('/api/v1/account/me?ngsw-bypass=true').flush(accountResponse);
+    await expect(registered).resolves.toEqual(account);
     expect(service.pendingVerify()).toBeNull();
   });
 
-  it('verifyAndNavigate deve definir pendingVerify e navegar para /cadastro quando isNewUser=true', async () => {
-    apiSpy.post.mockReturnValue(of({ email: 'novo@x.com', isNewUser: true }));
-    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
-
-    await service.verifyAndNavigate('token-novo');
-
-    expect(service.pendingVerify()).toEqual({ email: 'novo@x.com', isNewUser: true });
-    expect(navigateSpy).toHaveBeenCalledWith(['/cadastro']);
+  it('busca dados reais da conta após verificar usuário existente', async () => {
+    const result = service.verifyAndNavigate('existing-token');
+    http
+      .expectOne('/api/v1/auth/magic-link/verify')
+      .flush(
+        { status: 'ok', registrationRequired: false, verifiedEmail: account.email },
+        { headers: { 'X-CSRF-Token': 'csrf-login' } },
+      );
+    await Promise.resolve();
+    const fresh = http.expectOne('/api/v1/account/me?ngsw-bypass=true');
+    expect(fresh.request.cache).toBe('no-store');
+    fresh.flush(accountResponse);
+    await result;
+    expect(session.account()).toEqual(account);
+    expect(service.pendingVerify()).toBeNull();
+    expect(navigate).toHaveBeenCalledWith(['/conta']);
   });
 
-  it('verifyAndNavigate deve chamar setSession e navegar para /conta quando isNewUser=false', async () => {
-    const account = { id: '1', email: 'existente@x.com' };
-    apiSpy.post.mockReturnValue(of({ email: 'existente@x.com', isNewUser: false, account }));
-    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
-
-    await service.verifyAndNavigate('token-existente');
-
-    expect(sessionSpy.setSession).toHaveBeenCalledWith(account);
-    expect(navigateSpy).toHaveBeenCalledWith(['/conta']);
+  it('rejeita token inválido sem criar sessão ou navegar', async () => {
+    const result = service.verifyAndNavigate('invalid');
+    const rejected = expect(result).rejects.toMatchObject({ status: 401 });
+    http
+      .expectOne('/api/v1/auth/magic-link/verify')
+      .flush({ code: 'unauthorized' }, { status: 401, statusText: 'Unauthorized' });
+    await rejected;
+    expect(session.isAuthenticated()).toBe(false);
+    expect(service.pendingVerify()).toBeNull();
+    expect(navigate).not.toHaveBeenCalled();
   });
+
+  it('não envia cadastro sem verificação pendente', async () => {
+    let failure: unknown;
+    service.register({ address: account.address, petName: account.petName }).subscribe({
+      error: (error: unknown) => {
+        failure = error;
+      },
+    });
+    http.expectNone('/api/v1/auth/register');
+    expect(failure).toBeInstanceOf(Error);
+  });
+
+  it('logout confirmado limpa cache antes da sessão e navegação', async () => {
+    session.setSession(account);
+    clearCaches.mockImplementation(async () => expect(session.isAuthenticated()).toBe(true));
+    const result = service.logout();
+    expect(session.isAuthenticated()).toBe(true);
+    http.expectOne('/api/v1/auth/logout').flush(null, { status: 204, statusText: 'No Content' });
+    await result;
+    expect(clearCaches).toHaveBeenCalledOnce();
+    expect(session.isAuthenticated()).toBe(false);
+    expect(navigate).toHaveBeenCalledWith(['/entrar']);
+  });
+
+  it.each([0, 403, 500])('logout com falha %s preserva sessão e informa erro', async (status) => {
+    session.setSession(account);
+    const result = service.logout();
+    const rejected = expect(result).rejects.toMatchObject({ status });
+    const request = http.expectOne('/api/v1/auth/logout');
+    if (status === 0) request.error(new ProgressEvent('error'));
+    else request.flush({}, { status, statusText: 'Failure' });
+    await rejected;
+    expect(session.account()).toEqual(account);
+    expect(clearCaches).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('logout401 já revogado permite a limpeza local', async () => {
+    session.setSession(account);
+    const result = service.logout();
+    http.expectOne('/api/v1/auth/logout').flush({}, { status: 401, statusText: 'Unauthorized' });
+    await result;
+    expect(session.isAuthenticated()).toBe(false);
+    expect(clearCaches).toHaveBeenCalledOnce();
+  });
+  it('recupera pelo código real, carrega a conta e navega', async () => {
+    const result = service.recoverAndNavigate('recovery-fixture');
+    const request = http.expectOne('/api/v1/account/recovery/reset');
+    expect(request.request.body).toEqual({ code: 'recovery-fixture' });
+    request.flush({ status: 'ok' }, { headers: { 'X-CSRF-Token': 'csrf-recovery' } });
+    await Promise.resolve();
+    const fresh = http.expectOne('/api/v1/account/me?ngsw-bypass=true');
+    expect(fresh.request.cache).toBe('no-store');
+    fresh.flush(accountResponse);
+    await result;
+    expect(session.account()).toEqual(account);
+    expect(navigate).toHaveBeenCalledWith(['/conta']);
+  });
+
+  it('não navega nem cria sessão com código de recuperação rejeitado', async () => {
+    const result = service.recoverAndNavigate('used-code');
+    const rejected = expect(result).rejects.toMatchObject({ status: 401 });
+    http
+      .expectOne('/api/v1/account/recovery/reset')
+      .flush({ code: 'invalid_code' }, { status: 401, statusText: 'Unauthorized' });
+    await rejected;
+    expect(session.isAuthenticated()).toBe(false);
+    expect(navigate).not.toHaveBeenCalled();
+    http.expectNone('/api/v1/account/me?ngsw-bypass=true');
+  });
+
+  it('remove o token pendente anterior se uma nova verificação falhar', async () => {
+    const first = service.verifyAndNavigate('first-token');
+    http
+      .expectOne('/api/v1/auth/magic-link/verify')
+      .flush({ registrationRequired: true, verifiedEmail: account.email });
+    await first;
+    const next = service.verifyAndNavigate('invalid-next');
+    const rejected = expect(next).rejects.toMatchObject({ status: 401 });
+    http
+      .expectOne('/api/v1/auth/magic-link/verify')
+      .flush({}, { status: 401, statusText: 'Unauthorized' });
+    await rejected;
+    expect(service.pendingVerify()).toBeNull();
+    await expect(
+      firstValueFrom(service.register({ address: account.address, petName: account.petName })),
+    ).rejects.toThrow();
+    http.expectNone('/api/v1/auth/register');
+  });
+
+  it('mantém token de cadastro quando os dados são rejeitados para permitir correção', async () => {
+    const first = service.verifyAndNavigate('registration-token');
+    http
+      .expectOne('/api/v1/auth/magic-link/verify')
+      .flush({ registrationRequired: true, verifiedEmail: account.email });
+    await first;
+    const result = firstValueFrom(
+      service.register({ address: 'invalid', petName: account.petName }),
+    );
+    const rejected = expect(result).rejects.toMatchObject({ status: 422 });
+    http
+      .expectOne('/api/v1/auth/register')
+      .flush({ code: 'invalid_address' }, { status: 422, statusText: 'Unprocessable Entity' });
+    await rejected;
+    expect(service.pendingVerify()?.isNewUser).toBe(true);
+    const retry = firstValueFrom(
+      service.register({ address: account.address, petName: account.petName }),
+    );
+    const request = http.expectOne('/api/v1/auth/register');
+    expect(request.request.body.token).toBe('registration-token');
+    request.flush({ status: 'ok', accountId: account.id });
+    http.expectOne('/api/v1/account/me?ngsw-bypass=true').flush(accountResponse);
+    await retry;
+    await expect(
+      firstValueFrom(service.register({ address: account.address, petName: account.petName })),
+    ).rejects.toThrow();
+    http.expectNone('/api/v1/auth/register');
+  });
+
+  it.each(['verify', 'register', 'recover'] as const)(
+    'retoma %s sem reutilizar segredo consumido após falha temporária de /me',
+    async (flow) => {
+      if (flow === 'register') {
+        const verified = service.verifyAndNavigate('registration-fixture');
+        http
+          .expectOne('/api/v1/auth/magic-link/verify')
+          .flush({ registrationRequired: true, verifiedEmail: account.email });
+        await verified;
+      }
+      const action = () =>
+        flow === 'verify'
+          ? service.verifyAndNavigate('login-fixture')
+          : flow === 'recover'
+            ? service.recoverAndNavigate('recovery-fixture')
+            : firstValueFrom(
+                service.register({ address: account.address, petName: account.petName }),
+              );
+      const path =
+        flow === 'verify'
+          ? '/api/v1/auth/magic-link/verify'
+          : flow === 'recover'
+            ? '/api/v1/account/recovery/reset'
+            : '/api/v1/auth/register';
+      const first = action();
+      const rejected = expect(first).rejects.toMatchObject({ status: 503 });
+      http
+        .expectOne(path)
+        .flush(
+          flow === 'verify'
+            ? { registrationRequired: false, verifiedEmail: account.email }
+            : { status: 'ok', accountId: account.id },
+        );
+      await Promise.resolve();
+      http
+        .expectOne('/api/v1/account/me?ngsw-bypass=true')
+        .flush({}, { status: 503, statusText: 'Unavailable' });
+      await rejected;
+      const retry = action();
+      http.expectNone(path);
+      http.expectOne('/api/v1/account/me?ngsw-bypass=true').flush(accountResponse);
+      await retry;
+      expect(service.pendingVerify()).toBeNull();
+      if (flow !== 'register') expect(session.account()).toEqual(account);
+    },
+  );
 });

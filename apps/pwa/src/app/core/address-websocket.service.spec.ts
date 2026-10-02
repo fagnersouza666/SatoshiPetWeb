@@ -38,7 +38,7 @@ describe('AddressWebSocketService', () => {
     vi.stubGlobal('WebSocket', MockWebSocket);
 
     TestBed.configureTestingModule({
-      providers: [{ provide: API_BASE_URL, useValue: 'http://localhost:8080' }],
+      providers: [{ provide: API_BASE_URL, useValue: 'http://localhost:8080/api' }],
     });
     service = TestBed.inject(AddressWebSocketService);
   });
@@ -51,6 +51,16 @@ describe('AddressWebSocketService', () => {
   it('conecta no canal do endereço', () => {
     service.connect('bc1qtest', vi.fn());
     expect(socketInstances[0]?.url).toBe('ws://localhost:8080/api/ws/address/bc1qtest');
+  });
+
+  it('resolve a base relativa de produção sem duplicar /api', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [{ provide: API_BASE_URL, useValue: '/api' }] });
+    service = TestBed.inject(AddressWebSocketService);
+    service.connect('bc1qtest', vi.fn());
+    const expected = new URL('/api/ws/address/bc1qtest', window.location.href);
+    expected.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    expect(socketInstances[0]?.url).toBe(expected.toString());
   });
 
   it('notifica PET_ARTWORK_READY', () => {

@@ -1,14 +1,14 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { ApiClientService } from '../../../core/api-client.service';
-import { firstValueFrom } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
+import { AuthService } from '../../../core/auth.service';
 
 /**
  * Página de recuperação de acesso por código de backup (CONTA-04).
  *
  * O usuário informa o código de recuperação gerado no cadastro;
- * o servidor valida e envia um magic-link para o e-mail associado.
+ * o servidor valida, revoga as sessões anteriores e inicia uma nova sessão.
  *
  * Acessibilidade: WCAG 2.2 AA — labels associados, feedback com aria-live.
  */
@@ -21,7 +21,7 @@ import { firstValueFrom } from 'rxjs';
     <section class="page" aria-labelledby="recuperar-titulo">
       <h1 id="recuperar-titulo" class="page__title">Recuperar acesso</h1>
       <p class="page__sub">
-        Informe o código de recuperação recebido no cadastro para obter um novo link de acesso.
+        Informe seu código de recuperação para entrar na conta e revogar os acessos anteriores.
       </p>
 
       @if (sucesso()) {
@@ -36,7 +36,7 @@ import { firstValueFrom } from 'rxjs';
           >
             <path fill="currentColor" d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
           </svg>
-          <span>Código validado. Verifique seu e-mail para o link de acesso.</span>
+          <span>Acesso recuperado. Abrindo sua conta.</span>
         </div>
       }
 
@@ -264,7 +264,7 @@ import { firstValueFrom } from 'rxjs';
   ],
 })
 export class RecuperarComponent {
-  private readonly api = inject(ApiClientService);
+  private readonly auth = inject(AuthService);
   private readonly fb = inject(FormBuilder);
 
   protected readonly carregando = signal(false);
@@ -281,6 +281,7 @@ export class RecuperarComponent {
   }
 
   protected async recuperar(): Promise<void> {
+    if (this.carregando()) return;
     this.form.markAllAsTouched();
     if (this.form.invalid) return;
 
@@ -289,10 +290,14 @@ export class RecuperarComponent {
     this.erro.set(null);
 
     try {
-      await firstValueFrom(this.api.post<void>('/v1/auth/recover', { recoveryCode }));
+      await this.auth.recoverAndNavigate(recoveryCode);
       this.sucesso.set(true);
-    } catch {
-      this.erro.set('Código inválido ou já utilizado. Verifique o código e tente novamente.');
+    } catch (error) {
+      this.erro.set(
+        error instanceof HttpErrorResponse && (error.status === 400 || error.status === 401)
+          ? 'Código inválido ou já utilizado. Verifique o código e tente novamente.'
+          : 'Não foi possível concluir o acesso agora. Tente novamente.',
+      );
     } finally {
       this.carregando.set(false);
     }

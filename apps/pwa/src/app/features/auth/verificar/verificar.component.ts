@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { AuthService } from '../../../core/auth.service';
 
@@ -30,9 +31,18 @@ import { AuthService } from '../../../core/auth.service';
 
       @if (erro()) {
         <div class="alert alert--error" role="alert" aria-live="assertive" aria-atomic="true">
-          <strong>Link inválido ou expirado.</strong>
+          <strong>{{
+            podeTentarNovamente()
+              ? 'Acesso temporariamente indisponível.'
+              : 'Link inválido ou expirado.'
+          }}</strong>
           <p>{{ erro() }}</p>
         </div>
+        @if (podeTentarNovamente()) {
+          <button type="button" (click)="tentarNovamente()" [disabled]="carregando()">
+            Tentar novamente
+          </button>
+        }
         <nav class="page__links" aria-label="Opções de recuperação">
           <a routerLink="/entrar">Solicitar novo link</a>
           <span aria-hidden="true">·</span>
@@ -147,6 +157,7 @@ export class VerificarComponent implements OnInit {
   protected readonly carregando = signal(false);
   protected readonly erro = signal<string | null>(null);
   protected readonly semToken = signal(false);
+  protected readonly podeTentarNovamente = signal(false);
 
   ngOnInit(): void {
     const token = this.route.snapshot.queryParamMap.get('token');
@@ -159,14 +170,28 @@ export class VerificarComponent implements OnInit {
     this.verificar(token);
   }
 
+  protected tentarNovamente(): void {
+    const token = this.route.snapshot.queryParamMap.get('token');
+    if (token) void this.verificar(token);
+  }
+
   private async verificar(token: string): Promise<void> {
+    if (this.carregando()) return;
     this.carregando.set(true);
     this.erro.set(null);
+    this.podeTentarNovamente.set(false);
 
     try {
       await this.auth.verifyAndNavigate(token);
-    } catch {
-      this.erro.set('O link pode ter expirado ou já ter sido utilizado. Solicite um novo.');
+    } catch (error) {
+      const rejected =
+        error instanceof HttpErrorResponse && (error.status === 400 || error.status === 401);
+      this.podeTentarNovamente.set(!rejected);
+      this.erro.set(
+        rejected
+          ? 'O link pode ter expirado ou já ter sido utilizado. Solicite um novo.'
+          : 'Não foi possível concluir o acesso agora. Tente novamente.',
+      );
     } finally {
       this.carregando.set(false);
     }
