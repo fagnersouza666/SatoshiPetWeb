@@ -12,13 +12,23 @@ a inclusão de cada ícone; ele também participa de `npm test` e `check:pwa`.
 ## Respostas da API
 
 O grupo `api-freshness` mantém a política network-first do Angular
-(`freshness`) para `/api/**`, com timeout de 10 segundos, no máximo
+(`freshness`) somente para `/api/v1/public/**`, com timeout de 10 segundos, no máximo
 100 respostas e validade de um dia. O fallback permite leitura offline;
 não autoriza alterações financeiras offline nem transforma dados vencidos
 em dados atuais. `npm run test:pwa:api-cache` protege esses limites e
 participa de `npm test` e `check:pwa`.
 
 ## Isolamento e logout
+
+Identidade e respostas privadas (`/account`, `/auth`) não entram nos grupos de
+cache do SW. Leituras autenticadas enviam `ngsw-bypass=true` e usam `no-store`.
+O bootstrap restaura a sessão pelo cookie em `/account/me`, recupera o
+`X-CSRF-Token` somente em memória e aguarda essa leitura antes da navegação.
+Falha de rede no bootstrap não autentica o usuário com uma identidade antiga.
+
+Cada transição de sessão invalida respostas privadas anteriores em voo. Um 401
+privado remove identidade, CSRF e caches legados; a autenticação de outra conta
+também limpa esses caches. Leituras públicas continuam disponíveis offline.
 
 O logout remove buckets privados e respostas privadas de buckets compartilhados.
 As URLs públicas de arte de duas criaturas ou de versões diferentes continuam

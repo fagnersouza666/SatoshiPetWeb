@@ -41,6 +41,7 @@ public class SessionAuthFilter implements ContainerRequestFilter {
 
     @Override
     public void filter(ContainerRequestContext requestContext) {
+        authenticatedSession.set(null);
         Cookie cookie = requestContext.getCookies().get(SESSION_COOKIE);
         if (cookie == null || cookie.getValue() == null || cookie.getValue().isBlank()) {
             return; // sem cookie — request anônimo
@@ -50,7 +51,7 @@ public class SessionAuthFilter implements ContainerRequestFilter {
         Optional<Session> session = sessionService.findActive(rawToken, Instant.now());
 
         if (session.isPresent()) {
-            authenticatedSession.set(session.get());
+            authenticatedSession.set(session.get(), sessionService.deriveCsrfToken(rawToken));
             LOG.tracef("Sessão autenticada: account=%s", session.get().account.id);
         } else {
             LOG.debugf("Cookie sp_session presente mas sessão inválida/expirada");

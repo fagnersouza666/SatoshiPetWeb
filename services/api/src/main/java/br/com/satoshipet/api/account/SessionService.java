@@ -49,7 +49,7 @@ public class SessionService {
         Objects.requireNonNull(now, "now");
 
         String rawSessionToken = generateToken();
-        String rawCsrfToken    = generateToken();
+        String rawCsrfToken    = deriveCsrfToken(rawSessionToken);
 
         String sessionHash = hasher.hash(rawSessionToken);
         String csrfHash    = hasher.hash(rawCsrfToken);
@@ -114,6 +114,14 @@ public class SessionService {
         byte[] bytes = new byte[TOKEN_BYTES];
         random.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    /** Derivação estável com separação de domínio; cookie bruto nunca é persistido. */
+    public String deriveCsrfToken(String rawSessionToken) {
+        if (rawSessionToken == null || rawSessionToken.isBlank()) {
+            throw new IllegalArgumentException("Token de sessão obrigatório");
+        }
+        return hasher.hash("satoshi-pet:csrf:v1:" + rawSessionToken);
     }
 
     /**

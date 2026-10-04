@@ -290,7 +290,7 @@ export class CadastroComponent implements OnInit {
    * - Native SegWit bech32 (P2WPKH/P2WSH/Taproot): começa com `bc1`, 42–62 chars totais.
    */
   private readonly BITCOIN_ADDRESS_PATTERN =
-    /^[13][a-km-zA-HJ-NP-Z1-9]{24,33}$|^bc1[a-z0-9]{39,59}$/;
+    /^[13][a-km-zA-HJ-NP-Z1-9]{24,33}$|^(?:bc1[a-z0-9]{39,59}|BC1[A-Z0-9]{39,59})$/;
 
   protected readonly carregando = signal(false);
   protected readonly erro = signal<string | null>(null);

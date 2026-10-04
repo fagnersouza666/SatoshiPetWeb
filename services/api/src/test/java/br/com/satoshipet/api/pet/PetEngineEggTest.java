@@ -18,6 +18,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
@@ -142,6 +143,7 @@ class PetEngineEggTest {
         Instant plus24h = NOW.plus(Duration.ofHours(24));
 
         lifecycle.onBalanceKnown(fixture.pet.id, 0L, 0L, NOW);
+        lifecycle.onBalanceKnown(fixture.pet.id, 0L, 0L, plus24h);
         lifecycle.tick(fixture.pet.id, plus24h);
 
         Pet pet = Pet.findById(fixture.pet.id);
@@ -183,6 +185,7 @@ class PetEngineEggTest {
         Instant reappearAt = plus24h.plusSeconds(60);
 
         lifecycle.onBalanceKnown(fixture.pet.id, 0L, 0L, NOW);
+        lifecycle.onBalanceKnown(fixture.pet.id, 0L, 0L, plus24h);
         lifecycle.tick(fixture.pet.id, plus24h);
         lifecycle.onBalanceKnown(fixture.pet.id, FIVE_THOUSAND, 0L, reappearAt);
 
@@ -201,6 +204,7 @@ class PetEngineEggTest {
         UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
         lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, true, NOW);
 
+        lifecycle.onBalanceKnown(fixture.pet.id, 0L, 0L, NOW);
         lifecycle.onReceiptInvalidated(fixture.pet.id, receiptId, NOW);
 
         Pet pet = Pet.findById(fixture.pet.id);
@@ -220,6 +224,7 @@ class PetEngineEggTest {
         persistConfirmedReceipt(fixture, FIVE_THOUSAND);
         lifecycle.onReceiptObserved(fixture.pet.id, fed, FIVE_THOUSAND, true, NOW);
 
+        lifecycle.onBalanceKnown(fixture.pet.id, FIVE_THOUSAND, 0L, NOW);
         lifecycle.onReceiptInvalidated(fixture.pet.id, fed, NOW);
 
         Pet pet = Pet.findById(fixture.pet.id);
@@ -239,6 +244,7 @@ class PetEngineEggTest {
         assertEquals(0, afterConfirm.reserveHours.compareTo(SIX_HOURS));
         assertEquals(0, singleFeeding(afterConfirm).durationHours.compareTo(SIX_HOURS));
 
+        lifecycle.onBalanceKnown(fixture.pet.id, 0L, 0L, NOW);
         lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, false, NOW);
 
         Pet pet = Pet.findById(fixture.pet.id);
@@ -365,6 +371,46 @@ class PetEngineEggTest {
         List<PetFeeding> feedings = PetFeeding.listByPet(pet);
         assertEquals(1, feedings.size());
         return feedings.get(0);
+    }
+
+    @Test
+    @Transactional
+    void falhaDuranteCarenciaExigeReconciliacaoAntesDeConcluirOvo() {
+        Fixture fixture = persistBornCreature("unavailable-grace");
+        lifecycle.onBalanceKnown(fixture.pet.id, 0L, 0L, NOW);
+        lifecycle.onProviderFailure(fixture.pet.id, NOW.plusSeconds(60));
+        Instant afterGrace = NOW.plus(Duration.ofHours(25));
+        lifecycle.tick(fixture.pet.id, afterGrace);
+        assertEquals(PetPresentation.CREATURE, fixture.pet.presentation);
+
+        lifecycle.onBalanceKnown(fixture.pet.id, 0L, 0L, afterGrace);
+        assertEquals(PetPresentation.EGG, fixture.pet.presentation);
+    }
+
+    @Test
+    @Transactional
+    void saldoAntigoNaoSobrescreveReconciliacaoMaisRecente() {
+        Fixture fixture = persistBornCreature("old-balance");
+        lifecycle.onBalanceKnown(fixture.pet.id, 10_000L, 0L, NOW.plusSeconds(120));
+        lifecycle.onBalanceKnown(fixture.pet.id, 0L, 0L, NOW);
+        lifecycle.onProviderFailure(fixture.pet.id, NOW.plusSeconds(30));
+        assertNull(fixture.pet.zeroBalanceSince);
+        assertEquals(true, br.com.satoshipet.api.btc.AddressMonitorState.findByAddress(fixture.address)
+                .orElseThrow().providerAvailable);
+    }
+
+    @Test
+    @Transactional
+    void perdaDeFundamentoSemSaldoAtualAguardaReconciliacao() {
+        Fixture fixture = persistBornCreature("lost-unknown");
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, true, NOW);
+        lifecycle.onProviderFailure(fixture.pet.id, NOW);
+        lifecycle.onReceiptInvalidated(fixture.pet.id, receiptId, NOW);
+        assertEquals(PetPresentation.CREATURE, fixture.pet.presentation);
+        assertTrue(fixture.pet.birthFoundationLost);
+        lifecycle.onBalanceKnown(fixture.pet.id, 0L, 0L, NOW.plusSeconds(30));
+        assertEquals(PetPresentation.EGG, fixture.pet.presentation);
     }
 
     private static BigDecimal hours(String value) {

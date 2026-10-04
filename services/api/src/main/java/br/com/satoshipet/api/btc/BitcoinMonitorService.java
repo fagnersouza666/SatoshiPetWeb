@@ -105,252 +105,294 @@ public class BitcoinMonitorService {
     }
 
     private void pollAddressWithContext(Address address) {
+        lockAddress(address);
         Instant now = Instant.now();
-        LOG.debugf("Polling endereço=%s", address.canonical);
-
-        // 1. Obtém ou cria estado do monitor para este endereço
         AddressMonitorState state = getOrCreateState(address, now);
-
-        // 2. Consulta saldo (CA-031: nunca falha, retorna estado PROVIDER_FAILURE)
         BitcoinIndexerPort.BalanceResult balance = indexer.getBalance(address.canonical);
         if (balance.state() == BitcoinIndexerPort.BalanceState.PROVIDER_FAILURE) {
-            LOG.warnf("Provedor inacessível para endereço=%s — estado local preservado", address.canonical);
-            state.lastCheckedAt = now;
-            notifyPet(address, pet -> petLifecycle.onProviderFailure(pet.id, now));
-            return; // CA-031: falha de provedor não altera estado local
+            providerFailure(address, state, now);
+            return;
         }
+        var mempool = indexer.getMempoolPage(address.canonical);
+        ConfirmedScan scan = scanConfirmed(address, state);
+        if (!mempool.available() || scan == null) {
+            providerFailure(address, state, now);
+            return;
+        }
+        // Consultas primeiro: falha de uma página/evidência não publica lote parcial.
+        var incoming = new java.util.LinkedHashMap<String, BitcoinIndexerPort.TransactionInfo>();
+        mempool.transactions().forEach(tx -> incoming.put(tx.txid(), tx));
+        scan.transactions().forEach(tx -> incoming.put(tx.txid(), tx));
+        if (!collectEvidence(address, incoming)) {
+            providerFailure(address, state, now);
+            return;
+        }
+        Long previousBalance = state.confirmedBalanceSats;
+        state.recordBalance(balance.confirmedSats(), balance.pendingSats(), now);
+        // Materializa inputs de registros anteriores antes de procurar conflitos.
+        for (var info : incoming.values()) {
+            findTransaction(address, info.txid()).ifPresent(tx -> BitcoinInput.record(tx, info.inputs()));
+        }
+        for (var info : incoming.values()) processTransaction(address, info, previousBalance, now);
+        state.lastSeenTxid = scan.head();
+        state.cursor = scan.cursor();
+        state.backfillComplete = scan.backfillComplete();
+        state.lastCheckedAt = now;
+        publishBalance(address, state, balance, now);
+    }
 
-        // 3. Obtém transações pendentes na mempool
-        List<BitcoinIndexerPort.TransactionInfo> mempoolTxs = indexer.getMempool(address.canonical);
+    private record ConfirmedScan(List<BitcoinIndexerPort.TransactionInfo> transactions,
+                                 String head, String cursor, boolean backfillComplete) {}
 
-        // 4. Obtém transações on-chain (paginadas a partir do cursor)
-        List<BitcoinIndexerPort.TransactionInfo> chainTxs =
-                indexer.getTransactions(address.canonical, state.lastSeenTxid, TX_PAGE_SIZE);
+    private ConfirmedScan scanConfirmed(Address address, AddressMonitorState state) {
+        String previousHead = state.lastSeenTxid;
+        String cursor = null;
+        String newHead = previousHead;
+        String backfillCursor = state.cursor;
+        boolean complete = state.backfillComplete;
+        var gathered = new ArrayList<BitcoinIndexerPort.TransactionInfo>();
+        var seenPages = new java.util.HashSet<String>();
+        while (true) {
+            var page = indexer.getTransactionPage(address.canonical, cursor, TX_PAGE_SIZE);
+            if (!page.available()) return null;
+            var transactions = page.transactions();
+            gathered.addAll(transactions);
+            if (cursor == null && !transactions.isEmpty()) newHead = transactions.getFirst().txid();
+            boolean foundHead = previousHead != null && transactions.stream().anyMatch(tx -> tx.txid().equals(previousHead));
+            if (previousHead == null) {
+                if (!transactions.isEmpty()) backfillCursor = transactions.getLast().txid();
+                complete = transactions.size() < TX_PAGE_SIZE;
+                break;
+            }
+            if (foundHead || transactions.size() < TX_PAGE_SIZE) break;
+            cursor = transactions.getLast().txid();
+            if (!seenPages.add(cursor)) return null;
+        }
+        if (previousHead != null && !complete) {
+            var page = indexer.getTransactionPage(address.canonical, backfillCursor, TX_PAGE_SIZE);
+            if (!page.available()) return null;
+            gathered.addAll(page.transactions());
+            if (!page.transactions().isEmpty()) backfillCursor = page.transactions().getLast().txid();
+            complete = page.transactions().size() < TX_PAGE_SIZE;
+        }
+        return new ConfirmedScan(gathered, newHead, backfillCursor, complete);
+    }
 
-        // 5. Processa todas as transações (mempool primeiro, depois on-chain)
-        List<BitcoinIndexerPort.TransactionInfo> allTxs = new ArrayList<>(mempoolTxs);
-        allTxs.addAll(chainTxs);
-
-        String newLastSeen = state.lastSeenTxid;
-        for (BitcoinIndexerPort.TransactionInfo txInfo : allTxs) {
-            processTransaction(address, txInfo, now);
-            if (!chainTxs.isEmpty() && txInfo.equals(chainTxs.get(chainTxs.size() - 1))) {
-                newLastSeen = txInfo.txid();
+    /** Reconcilia também transações antigas, ausentes da página mais recente. */
+    private boolean collectEvidence(Address address, Map<String, BitcoinIndexerPort.TransactionInfo> incoming) {
+        List<BitcoinTransaction> active = BitcoinTransaction.list("address = ?1 and status in (?2, ?3)",
+                address, BitcoinTransaction.Status.PENDING, BitcoinTransaction.Status.CONFIRMED);
+        for (BitcoinTransaction tx : active) {
+            if (incoming.containsKey(tx.txid)) continue;
+            var lookup = indexer.getTransaction(address.canonical, tx.txid);
+            if (lookup.state() == BitcoinIndexerPort.LookupState.UNAVAILABLE) return false;
+            if (lookup.state() == BitcoinIndexerPort.LookupState.FOUND) {
+                incoming.put(tx.txid, lookup.transaction());
+                continue;
+            }
+            // 404 não prova descarte. Só o gasto de um input por outra transação prova conflito.
+            for (var input : BitcoinInput.inputsOf(tx)) {
+                var spend = indexer.getOutspend(input);
+                if (!spend.available()) return false;
+                if (spend.spendingTxid() == null || spend.spendingTxid().equals(tx.txid)) continue;
+                var replacement = incoming.get(spend.spendingTxid());
+                if (replacement == null) {
+                    var replacementLookup = indexer.getTransaction(address.canonical, spend.spendingTxid());
+                    if (replacementLookup.state() != BitcoinIndexerPort.LookupState.FOUND) return false;
+                    replacement = replacementLookup.transaction();
+                }
+                if (!replacement.inputs().contains(input)) return false;
+                incoming.put(replacement.txid(), replacement);
             }
         }
-
-        // 6. Avança o cursor do estado do monitor
-        state.advance(newLastSeen, newLastSeen, now);
-
-        // 7. Emite evento de reconciliação quando saldo confirmado disponível
-        if (balance.state() == BitcoinIndexerPort.BalanceState.CONFIRMED) {
-            emitReconciliationEvent(address, balance, now);
-            notifyPet(address, pet -> petLifecycle.onBalanceKnown(
-                    pet.id, balance.confirmedSats(), balance.pendingSats(), now));
+        // Se duas respostas concorrentes contradizem os inputs, exige outspend atual.
+        var spenderByInput = new java.util.HashMap<BitcoinIndexerPort.InputInfo, String>();
+        var superseded = new java.util.HashSet<String>();
+        for (var info : incoming.values()) {
+            if (!isActive(info.status())) continue;
+            for (var input : info.inputs()) {
+                String other = spenderByInput.putIfAbsent(input, info.txid());
+                if (other == null || other.equals(info.txid())) continue;
+                var spend = indexer.getOutspend(input);
+                if (!spend.available() || spend.spendingTxid() == null
+                        || (!spend.spendingTxid().equals(other) && !spend.spendingTxid().equals(info.txid()))) return false;
+                superseded.add(spend.spendingTxid().equals(other) ? info.txid() : other);
+                spenderByInput.put(input, spend.spendingTxid());
+            }
         }
+        superseded.forEach(incoming::remove);
+        return true;
     }
 
-    // -------------------------------------------------------------------------
-    // Processamento individual de transações
-    // -------------------------------------------------------------------------
-
-    private void processTransaction(
-            Address address,
-            BitcoinIndexerPort.TransactionInfo txInfo,
-            Instant now
-    ) {
-        Optional<BitcoinTransaction> existing = BitcoinTransaction.findByTxid(txInfo.txid());
-
-        if (existing.isEmpty()) {
-            createTransaction(address, txInfo, now);
-        } else {
-            updateTransactionIfChanged(existing.get(), txInfo, now);
+    private void processTransaction(Address address, BitcoinIndexerPort.TransactionInfo info,
+                                    Long previousBalance, Instant now) {
+        Optional<BitcoinTransaction> found = findTransaction(address, info.txid());
+        if (found.isEmpty()) {
+            createTransaction(address, info, now);
+            return;
         }
-    }
-
-    private void createTransaction(
-            Address address,
-            BitcoinIndexerPort.TransactionInfo txInfo,
-            Instant now
-    ) {
-        Instant observedAt = txInfo.observedAt() != null ? txInfo.observedAt() : now;
-
-        BitcoinTransaction tx = BitcoinTransaction.createPending(
-                txInfo.txid(), address, txInfo.amountSats(), observedAt
-        );
-
-        if (txInfo.status() == BitcoinTransaction.Status.CONFIRMED) {
-            tx.status       = BitcoinTransaction.Status.CONFIRMED;
-            tx.confirmedAt  = txInfo.confirmedAt() != null ? txInfo.confirmedAt() : now;
-            tx.blockHeight  = txInfo.blockHeight();
-            tx.blockHash    = txInfo.blockHash();
-        }
-
-        tx.persist();
-
-        // Persiste outputs destinados ao endereço monitorado
-        for (BitcoinIndexerPort.OutputInfo out : txInfo.outputs()) {
-            BitcoinOutput output = BitcoinOutput.create(tx, out.vout(), address, out.amountSats(), null);
-            output.persist();
-        }
-
-        // Cria ou atualiza LogicalReceipt idempotentemente
-        LogicalReceipt receipt = LogicalReceipt.findByAddressAndTxid(address, txInfo.txid())
-                .orElseGet(() -> {
-                    LogicalReceipt r = LogicalReceipt.createPending(
-                            address, txInfo.txid(), txInfo.amountSats(), now
-                    );
-                    r.persist();
-                    return r;
-                });
-
-        boolean confirmed = txInfo.status() == BitcoinTransaction.Status.CONFIRMED;
-        if (confirmed) {
-            receipt.confirmedSats = txInfo.amountSats();
-            receipt.pendingSats   = 0L;
-            receipt.updatedAt     = now;
-        }
-
-        notifyPet(address, pet -> petLifecycle.onReceiptObserved(
-                pet.id, receipt.id, txInfo.amountSats(), confirmed, now));
-
-        // Emite evento de domínio redagido
-        emitTransactionObservedEvent(address, tx, txInfo, now);
-
-        LOG.infof("Nova transação persistida: txid=%s endereço=%s sats=%d status=%s",
-                txInfo.txid(), address.canonical, txInfo.amountSats(), tx.status);
-    }
-
-    private void updateTransactionIfChanged(
-            BitcoinTransaction tx,
-            BitcoinIndexerPort.TransactionInfo txInfo,
-            Instant now
-    ) {
-        if (tx.status == txInfo.status()) return; // sem mudança
-
+        BitcoinTransaction tx = found.get();
+        if (tx.logicalReceipt == null) tx.logicalReceipt = LogicalReceipt.findByAddressAndTxid(address, tx.txid).orElse(null);
+        BitcoinInput.record(tx, info.inputs());
         BitcoinTransaction.Status previousStatus = tx.status;
-
-        switch (txInfo.status()) {
-            case CONFIRMED -> {
-                tx.status      = BitcoinTransaction.Status.CONFIRMED;
-                tx.confirmedAt = txInfo.confirmedAt() != null ? txInfo.confirmedAt() : now;
-                tx.blockHeight = txInfo.blockHeight();
-                tx.blockHash   = txInfo.blockHash();
-
-                LogicalReceipt.findByAddressAndTxid(tx.address, tx.txid).ifPresent(r -> {
-                    r.confirmedSats = tx.amountSats;
-                    r.pendingSats   = 0L;
-                    r.updatedAt     = now;
-                    notifyPet(tx.address, pet -> petLifecycle.onReceiptConfirmed(
-                            pet.id, r.id, tx.amountSats, now));
-                });
-
-                emitTransactionConfirmedEvent(tx.address, tx, previousStatus, txInfo, now);
-                LOG.infof("Transação confirmada: txid=%s bloco=%d", tx.txid, tx.blockHeight);
-            }
-            case REPLACED -> {
-                tx.status = BitcoinTransaction.Status.REPLACED;
-
-                LogicalReceipt.findByAddressAndTxid(tx.address, tx.txid).ifPresent(r -> {
-                    r.pendingSats = 0L;
-                    r.updatedAt   = now;
-                    notifyPet(tx.address, pet -> petLifecycle.onReceiptInvalidated(pet.id, r.id, now));
-                });
-
-                emitTransactionReplacedEvent(tx.address, tx, txInfo, now);
-                LOG.infof("Transação substituída (RBF): txid=%s", tx.txid);
-            }
-            case DROPPED -> {
-                tx.status = BitcoinTransaction.Status.DROPPED;
-
-                LogicalReceipt.findByAddressAndTxid(tx.address, tx.txid).ifPresent(r -> {
-                    r.pendingSats = 0L;
-                    r.updatedAt   = now;
-                    notifyPet(tx.address, pet -> petLifecycle.onReceiptInvalidated(pet.id, r.id, now));
-                });
-
-                emitTransactionDroppedEvent(tx.address, tx, previousStatus, txInfo, now);
-                LOG.infof("Transação descartada: txid=%s", tx.txid);
-            }
-            default -> LOG.warnf("Transição de status não tratada: %s → %s para txid=%s",
-                    previousStatus, txInfo.status(), tx.txid);
+        Map<String, Object> previousBlock = buildBlockMap(tx);
+        boolean changed = previousStatus != info.status() || tx.amountSats != info.amountSats()
+                || !java.util.Objects.equals(tx.blockHash, info.blockHash());
+        if (!changed) return;
+        boolean reorg = previousStatus == BitcoinTransaction.Status.CONFIRMED
+                && (info.status() == BitcoinTransaction.Status.PENDING
+                    || (info.status() == BitcoinTransaction.Status.CONFIRMED
+                        && !java.util.Objects.equals(tx.blockHash, info.blockHash())));
+        applyTransactionState(tx, info, now);
+        updateReceipt(tx, now);
+        if (reorg) emitChainReorgEvent(address, tx, reorgData(previousBlock, previousBalance), now);
+        else if (info.status() == BitcoinTransaction.Status.CONFIRMED) {
+            emitTransactionConfirmedEvent(address, tx, previousStatus, info, now);
+        } else if (info.status() == BitcoinTransaction.Status.REPLACED) {
+            emitTransactionReplacedEvent(address, tx, info, now);
+        } else if (info.status() == BitcoinTransaction.Status.DROPPED) {
+            emitTransactionDroppedEvent(address, tx, previousStatus, info, now);
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Reorg handler (mínimo mas testado)
-    // -------------------------------------------------------------------------
+    private void createTransaction(Address address, BitcoinIndexerPort.TransactionInfo info, Instant now) {
+        var conflicts = BitcoinInput.conflicts(address, info.inputs());
+        BitcoinTransaction tx = BitcoinTransaction.createPending(info.txid(), address, info.amountSats(),
+                info.observedAt() != null ? info.observedAt() : now);
+        applyTransactionState(tx, info, now);
+        LogicalReceipt receipt = conflicts.stream().map(old -> old.logicalReceipt)
+                .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        if (receipt == null && info.amountSats() > 0) {
+            receipt = LogicalReceipt.findByAddressAndTxid(address, info.txid()).orElse(null);
+            if (receipt == null) {
+                receipt = LogicalReceipt.createPending(address, info.txid(), info.amountSats(), now);
+                receipt.persist();
+            }
+        }
+        tx.logicalReceipt = receipt;
+        tx.persist();
+        BitcoinInput.record(tx, info.inputs());
+        for (var output : info.outputs()) {
+            BitcoinOutput.create(tx, output.vout(), address, output.amountSats(), null).persist();
+        }
+        for (BitcoinTransaction original : conflicts) {
+            original.status = BitcoinTransaction.Status.REPLACED;
+            // Uma substituta pode reunir duas transações conflitantes: conserva uma
+            // identidade e invalida as demais, sem creditar o valor mais de uma vez.
+            if (original.logicalReceipt != null && original.logicalReceipt != receipt) invalidateReceipt(original.logicalReceipt, now);
+            emitTransactionReplacedEvent(address, original, info, now);
+        }
+        updateReceipt(tx, now);
+        if (info.amountSats() > 0) emitTransactionObservedEvent(address, tx, info, now);
+    }
 
-    /**
-     * Processa uma reorganização de chain: uma transação que estava confirmada
-     * volta à mempool.
-     *
-     * <p>Atualiza o status para PENDING, recalcula saldos do
-     * {@link LogicalReceipt} sem reescrever histórico (CC-10).</p>
-     *
-     * @param txid       hash da transação afetada pelo reorg
-     * @param reorgEvent dados do evento de reorganização
-     * @param now        instante atual
-     */
+    private static boolean isActive(BitcoinTransaction.Status status) {
+        return status == BitcoinTransaction.Status.PENDING || status == BitcoinTransaction.Status.CONFIRMED;
+    }
+
+    private void applyTransactionState(BitcoinTransaction tx, BitcoinIndexerPort.TransactionInfo info, Instant now) {
+        tx.status = info.status(); tx.amountSats = info.amountSats();
+        boolean confirmed = info.status() == BitcoinTransaction.Status.CONFIRMED;
+        tx.confirmedAt = confirmed ? (info.confirmedAt() == null ? now : info.confirmedAt()) : null;
+        tx.blockHeight = confirmed ? info.blockHeight() : null;
+        tx.blockHash = confirmed ? info.blockHash() : null;
+    }
+
+    private void updateReceipt(BitcoinTransaction tx, Instant now) {
+        LogicalReceipt receipt = tx.logicalReceipt;
+        if (receipt == null) return; // Saída sem recebimento não alimenta.
+        if (!isActive(tx.status) || tx.amountSats == 0) {
+            invalidateReceipt(receipt, now);
+            return;
+        }
+        receipt.amountSats = tx.amountSats;
+        receipt.confirmedSats = tx.status == BitcoinTransaction.Status.CONFIRMED ? tx.amountSats : 0;
+        receipt.pendingSats = tx.status == BitcoinTransaction.Status.PENDING ? tx.amountSats : 0;
+        receipt.updatedAt = now.isBefore(receipt.createdAt) ? receipt.createdAt : now;
+        notifyPet(tx.address, pet -> petLifecycle.onReceiptObserved(pet.id, receipt.id, tx.amountSats,
+                tx.status == BitcoinTransaction.Status.CONFIRMED, now));
+    }
+
+    private void invalidateReceipt(LogicalReceipt receipt, Instant now) {
+        receipt.amountSats = 0; receipt.confirmedSats = 0; receipt.pendingSats = 0;
+        receipt.updatedAt = now.isBefore(receipt.createdAt) ? receipt.createdAt : now;
+        notifyPet(receipt.address, pet -> petLifecycle.onReceiptInvalidated(pet.id, receipt.id, now));
+    }
+
+    /** Reorg explícito é aplicado a todas as observações do txid, sem somar recebimentos como saldo. */
     @Transactional
     public void handleReorg(String txid, Map<String, Object> reorgEvent, Instant now) {
         try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(CorrelationIdContext.current())) {
-            BitcoinTransaction.findByTxid(txid).ifPresent(tx -> {
-                if (tx.status != BitcoinTransaction.Status.CONFIRMED) return;
-
-                LOG.warnf("Reorg detectado: txid=%s retorna à mempool", txid);
-                tx.status      = BitcoinTransaction.Status.PENDING;
-                tx.confirmedAt = null;
-                tx.blockHeight = null;
-                tx.blockHash   = null;
-
-                LogicalReceipt.findByAddressAndTxid(tx.address, txid).ifPresent(r -> {
-                    r.pendingSats   = r.confirmedSats;
-                    r.confirmedSats = 0L;
-                    r.updatedAt     = now.isBefore(r.createdAt) ? r.createdAt : now;
-                    long pendingAmount = r.pendingSats;
-                    notifyPet(tx.address, pet -> {
-                        petLifecycle.onReceiptObserved(pet.id, r.id, pendingAmount, false, now);
-                        long[] totals = localReceiptTotals(tx.address);
-                        petLifecycle.onBalanceKnown(pet.id, totals[0], totals[1], now);
-                    });
-                });
-
-                emitChainReorgEvent(tx.address, tx, reorgEvent, now);
-            });
+            List<BitcoinTransaction> affected = BitcoinTransaction.list("txid = ?1 order by address.id", txid);
+            // Ordem determinística e comum aos demais escritores: pet antes do endereço.
+            affected.stream().map(tx -> Pet.findByAddress(tx.address)).flatMap(Optional::stream)
+                    .map(pet -> pet.id).distinct().sorted().forEach(Pet::lockForUpdate);
+            affected.forEach(tx -> lockAddress(tx.address));
+            for (BitcoinTransaction tx : affected) {
+                if (tx.status != BitcoinTransaction.Status.CONFIRMED) continue;
+                AddressMonitorState state = getOrCreateState(tx.address, now);
+                Long previousBalance = state.confirmedBalanceSats;
+                var balance = indexer.getBalance(tx.address.canonical);
+                if (balance.state() == BitcoinIndexerPort.BalanceState.PROVIDER_FAILURE) providerFailure(tx.address, state, now);
+                else state.recordBalance(balance.confirmedSats(), balance.pendingSats(), now);
+                Map<String, Object> data = new java.util.LinkedHashMap<>(reorgEvent);
+                data.putAll(reorgData(buildBlockMap(tx), previousBalance));
+                tx.status = BitcoinTransaction.Status.PENDING;
+                tx.confirmedAt = null; tx.blockHeight = null; tx.blockHash = null;
+                if (tx.logicalReceipt == null) tx.logicalReceipt = LogicalReceipt.findByAddressAndTxid(tx.address, txid).orElse(null);
+                updateReceipt(tx, now);
+                if (balance.state() != BitcoinIndexerPort.BalanceState.PROVIDER_FAILURE) publishBalance(tx.address, state, balance, now);
+                emitChainReorgEvent(tx.address, tx, data, now);
+            }
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Estado do monitor
-    // -------------------------------------------------------------------------
-
-    private AddressMonitorState getOrCreateState(Address address, Instant now) {
-        return AddressMonitorState.findByAddress(address)
-                .orElseGet(() -> {
-                    AddressMonitorState s = AddressMonitorState.init(address, now);
-                    s.persist();
-                    return s;
-                });
+    private Map<String, Object> reorgData(Map<String, Object> previousBlock, Long previousBalance) {
+        Map<String, Object> data = new java.util.LinkedHashMap<>();
+        data.put("previousBlock", previousBlock); data.put("previousConfirmedBalanceSats", previousBalance);
+        return data;
     }
 
-    // -------------------------------------------------------------------------
-    // Pet lifecycle (invariante crítica: somente recebimentos on-chain reais)
-    // -------------------------------------------------------------------------
+    private void lockAddress(Address address) {
+        Pet.findByAddress(address).ifPresent(pet -> Pet.lockForUpdate(pet.id));
+        var em = Address.getEntityManager();
+        em.flush();
+        Address managed = em.contains(address) ? address : em.find(Address.class, address.id);
+        em.lock(managed, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+    }
+
+    private Optional<BitcoinTransaction> findTransaction(Address address, String txid) {
+        return BitcoinTransaction.find("address = ?1 and txid = ?2", address, txid).firstResultOptional();
+    }
+
+    private AddressMonitorState getOrCreateState(Address address, Instant now) {
+        AddressMonitorState state = AddressMonitorState.loadOrCreate(address, now);
+        var em = AddressMonitorState.getEntityManager();
+        if (em.getLockMode(state) != jakarta.persistence.LockModeType.PESSIMISTIC_WRITE) {
+            em.flush();
+            em.refresh(state, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        }
+        return state;
+    }
+
+    private void providerFailure(Address address, AddressMonitorState state, Instant now) {
+        state.lastCheckedAt = now; state.providerAvailable = false;
+        notifyPet(address, pet -> petLifecycle.onProviderFailure(pet.id, now));
+    }
+
+    private void publishBalance(Address address, AddressMonitorState state,
+                                BitcoinIndexerPort.BalanceResult balance, Instant now) {
+        if (!java.util.Objects.equals(state.lastPublishedConfirmedSats, balance.confirmedSats())
+                || !java.util.Objects.equals(state.lastPublishedPendingSats, balance.pendingSats())) {
+            emitReconciliationEvent(address, balance, now);
+            state.lastPublishedConfirmedSats = balance.confirmedSats();
+            state.lastPublishedPendingSats = balance.pendingSats();
+        }
+        notifyPet(address, pet -> petLifecycle.onBalanceKnown(pet.id, balance.confirmedSats(), balance.pendingSats(), now));
+    }
 
     private void notifyPet(Address address, Consumer<Pet> action) {
         Pet.findByAddress(address).ifPresent(action);
-    }
-
-    /** Somas locais de {@link LogicalReceipt} do endereço (independentes do indexador). */
-    private long[] localReceiptTotals(Address address) {
-        long confirmed = 0L;
-        long pending = 0L;
-        for (LogicalReceipt receipt : LogicalReceipt.findByAddress(address)) {
-            confirmed += receipt.confirmedSats;
-            pending += receipt.pendingSats;
-        }
-        return new long[] {confirmed, pending};
     }
 
     // -------------------------------------------------------------------------
@@ -447,8 +489,10 @@ public class BitcoinMonitorService {
             payload.put("replacedTxid", tx.txid);
             payload.put("replacementTxid", replacementInfo.txid());
             payload.put("replacedStatus", BitcoinTransaction.Status.REPLACED.name());
-            payload.put("replacementStatus", BitcoinTransaction.Status.PENDING.name());
-            payload.put("conflictInputs", List.of());
+            payload.put("replacementStatus", replacementInfo.status().name());
+            payload.put("conflictInputs", BitcoinInput.inputsOf(tx).stream()
+                    .filter(replacementInfo.inputs()::contains)
+                    .map(input -> Map.of("txid", input.txid(), "vout", input.vout())).toList());
             payload.put("replacedReceivedSats", tx.amountSats);
             payload.put("replacementReceivedSats", replacementInfo.amountSats());
 
@@ -518,16 +562,17 @@ public class BitcoinMonitorService {
             Map<String, Object> payload = new java.util.LinkedHashMap<>();
             payload.put("network", network);
             payload.put("address", address.canonical);
-            payload.put("oldTip", reorgData.getOrDefault("oldTip", Map.of("hash", "", "height", 0)));
-            payload.put("newTip", reorgData.getOrDefault("newTip", Map.of("hash", "", "height", 0)));
-            payload.put("forkHeight", reorgData.getOrDefault("forkHeight", 0));
-            payload.put("depth", reorgData.getOrDefault("depth", 1));
+            payload.put("oldTip", reorgData.get("oldTip"));
+            payload.put("newTip", reorgData.get("newTip"));
+            payload.put("forkHeight", reorgData.get("forkHeight"));
+            payload.put("depth", reorgData.get("depth"));
             payload.put("affectedTransactions", List.of(
-                    Map.of("txid", tx.txid, "previousStatus", "CONFIRMED", "currentStatus", "PENDING",
-                            "previousBlock", Map.of(), "currentBlock", Map.of())
+                    Map.of("txid", tx.txid, "previousStatus", "CONFIRMED", "currentStatus", tx.status.name(),
+                            "previousBlock", reorgData.getOrDefault("previousBlock", Map.of()), "currentBlock", buildBlockMap(tx))
             ));
-            payload.put("previousConfirmedBalanceSats", tx.amountSats);
-            payload.put("currentConfirmedBalanceSats", 0L);
+            payload.put("previousConfirmedBalanceSats", reorgData.get("previousConfirmedBalanceSats"));
+            payload.put("currentConfirmedBalanceSats", AddressMonitorState.findByAddress(address)
+                    .filter(state -> state.providerAvailable).map(state -> state.confirmedBalanceSats).orElse(null));
 
             String json = redactor.redact(DomainEventType.BITCOIN_CHAIN_REORG.value(), payload, null, null);
             outboxService.save(

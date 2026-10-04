@@ -53,29 +53,69 @@ public class EsploraBitcoinIndexer implements BitcoinIndexerPort {
 
     @Override
     public List<TransactionInfo> getTransactions(String canonical, String cursor, int limit) {
+        return getTransactionPage(canonical, cursor, limit).transactions();
+    }
+
+    @Override
+    public TransactionPage getTransactionPage(String canonical, String cursor, int limit) {
         try {
             List<EsploraTx> txs = cursor == null || cursor.isBlank()
                     ? esplora.getChainTransactionsFromStart(canonical)
                     : esplora.getChainTransactions(canonical, cursor);
-            return txs.stream()
+            return new TransactionPage(txs.stream()
                     .map(tx -> toTransactionInfo(tx, canonical))
                     .limit(limit)
-                    .toList();
+                    .toList(), true);
         } catch (Exception e) {
             LOG.errorf(e, "Falha ao listar transações on-chain no Esplora para endereço=%s", canonical);
-            return List.of();
+            return new TransactionPage(List.of(), false);
         }
     }
 
     @Override
     public List<TransactionInfo> getMempool(String canonical) {
+        return getMempoolPage(canonical).transactions();
+    }
+
+    @Override
+    public TransactionPage getMempoolPage(String canonical) {
         try {
-            return esplora.getMempoolTransactions(canonical).stream()
+            return new TransactionPage(esplora.getMempoolTransactions(canonical).stream()
                     .map(tx -> toTransactionInfo(tx, canonical))
-                    .toList();
+                    .toList(), true);
         } catch (Exception e) {
             LOG.errorf(e, "Falha ao listar mempool no Esplora para endereço=%s", canonical);
-            return List.of();
+            return new TransactionPage(List.of(), false);
+        }
+    }
+
+    @Override
+    public TransactionLookup getTransaction(String canonical, String txid) {
+        try {
+            EsploraTx tx = esplora.getTransaction(txid);
+            if (tx == null || tx.status() == null || !txid.equals(tx.txid())) {
+                return new TransactionLookup(LookupState.UNAVAILABLE, null);
+            }
+            return new TransactionLookup(LookupState.FOUND, toTransactionInfo(tx, canonical));
+        } catch (jakarta.ws.rs.NotFoundException e) {
+            return new TransactionLookup(LookupState.MISSING, null);
+        } catch (Exception e) {
+            LOG.warnf("Falha ao reconciliar transação %s no Esplora", txid);
+            return new TransactionLookup(LookupState.UNAVAILABLE, null);
+        }
+    }
+
+    @Override
+    public OutspendLookup getOutspend(InputInfo input) {
+        try {
+            var spend = esplora.getOutspend(input.txid(), input.vout());
+            if (spend == null || (spend.spent() && spend.txid() == null)) {
+                return new OutspendLookup(false, null);
+            }
+            return new OutspendLookup(true, spend.spent() ? spend.txid() : null);
+        } catch (Exception e) {
+            LOG.warnf("Falha ao reconciliar outpoint %s:%d no Esplora", input.txid(), input.vout());
+            return new OutspendLookup(false, null);
         }
     }
 
@@ -108,7 +148,7 @@ public class EsploraBitcoinIndexer implements BitcoinIndexerPort {
         if (tx.vout() != null) {
             for (int i = 0; i < tx.vout().size(); i++) {
                 EsploraTxOutput out = tx.vout().get(i);
-                if (canonical.equalsIgnoreCase(out.scriptpubkeyAddress())) {
+                if (canonical.equals(out.scriptpubkeyAddress())) {
                     outputs.add(new OutputInfo(i, out.scriptpubkeyAddress(), out.value()));
                     amountSats += out.value();
                 }
@@ -123,7 +163,10 @@ public class EsploraBitcoinIndexer implements BitcoinIndexerPort {
                 confirmedAt,
                 blockHeight,
                 blockHash,
-                outputs
+                outputs,
+                tx.vin() == null ? List.of() : tx.vin().stream()
+                        .filter(input -> input.prevTxid() != null)
+                        .map(input -> new InputInfo(input.prevTxid(), input.prevVout())).toList()
         );
     }
 }

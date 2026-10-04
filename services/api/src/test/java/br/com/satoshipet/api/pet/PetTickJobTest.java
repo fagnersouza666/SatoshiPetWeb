@@ -5,9 +5,10 @@ import br.com.satoshipet.api.account.AccountAddressBinding;
 import br.com.satoshipet.api.account.Address;
 import br.com.satoshipet.api.job.JobLockService;
 import br.com.satoshipet.api.pet.engine.EmotionalState;
+import java.util.concurrent.atomic.AtomicInteger;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -47,9 +48,30 @@ class PetTickJobTest {
     }
 
     @Test
-    @Transactional
+    void concessaoPerdidaInterrompeAntesDeQualquerTick() {
+        ca025TickComAppFechadoAtualizaParaPensando();
+        AtomicInteger checked = new AtomicInteger();
+        AtomicInteger ticked = new AtomicInteger();
+        JobLockService locks = new JobLockService(null, null) {
+            @Override public boolean runWhileOwned(String name, String owner, Duration ttl, Runnable work) {
+                checked.incrementAndGet();
+                return false;
+            }
+        };
+        PetLifecyclePort lifecycle = new LoggingPetLifecyclePort() {
+            @Override public void tick(UUID petId, Instant now) { ticked.incrementAndGet(); }
+        };
+
+        new PetTickJob(locks, lifecycle).runTickCycle("lost-owner");
+
+        assertEquals(1, checked.get());
+        assertEquals(0, ticked.get());
+    }
+
+    @Test
     void ca025TickComAppFechadoAtualizaParaPensando() {
-        Instant depletedAt = Instant.now().minus(Duration.ofHours(10));
+        Instant depletedAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS).minus(Duration.ofHours(10));
+        UUID petId = QuarkusTransaction.requiringNew().call(() -> {
         Address address = Address.create(
                 "bcrt1qtick" + UUID.randomUUID().toString().replace("-", ""), depletedAt);
         address.persist();
@@ -70,10 +92,15 @@ class PetTickJobTest {
         pet.emotionalState = EmotionalState.ALIMENTADO;
         pet.persist();
 
-        job.runTickCycle();
+        return pet.id;
+        });
 
-        Pet updated = Pet.findById(pet.id);
+        job.tick();
+
+        QuarkusTransaction.requiringNew().run(() -> {
+        Pet updated = Pet.findById(petId);
         assertEquals(EmotionalState.PENSANDO, updated.emotionalState);
-        assertEquals(depletedAt, updated.reserveDepletedAt);
+        assertEquals(depletedAt.truncatedTo(java.time.temporal.ChronoUnit.MICROS), updated.reserveDepletedAt);
+        });
     }
 }

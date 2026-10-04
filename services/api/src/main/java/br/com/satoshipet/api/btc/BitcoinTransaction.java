@@ -44,13 +44,18 @@ public class BitcoinTransaction extends PanacheEntityBase {
     public UUID id;
 
     /** Hash da transação em hexadecimal (64 chars). */
-    @Column(name = "txid", nullable = false, length = 64, unique = true, updatable = false)
+    @Column(name = "txid", nullable = false, length = 64, updatable = false)
     public String txid;
 
     /** Endereço receptor desta observação. */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "address_id", nullable = false, updatable = false)
     public Address address;
+
+    /** Todas as versões RBF apontam para o mesmo recebimento lógico. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "logical_receipt_id")
+    public LogicalReceipt logicalReceipt;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)
@@ -101,6 +106,13 @@ public class BitcoinTransaction extends PanacheEntityBase {
     /** Retorna transações pendentes de um endereço. */
     public static List<BitcoinTransaction> findPendingByAddress(Address address) {
         return list("address = ?1 AND status = ?2", address, Status.PENDING);
+    }
+
+    /** Versão ativa de um recebimento (a referência original pode estar substituída). */
+    public static Optional<BitcoinTransaction> findCurrentByReceipt(LogicalReceipt receipt) {
+        return find("(logicalReceipt = ?1 or (logicalReceipt is null and address = ?2 and txid = ?3)) "
+                        + "and status in (?4, ?5) order by observedAt desc", receipt, receipt.address,
+                receipt.referenceTxid, Status.CONFIRMED, Status.PENDING).firstResultOptional();
     }
 
     /** Busca por txid. */

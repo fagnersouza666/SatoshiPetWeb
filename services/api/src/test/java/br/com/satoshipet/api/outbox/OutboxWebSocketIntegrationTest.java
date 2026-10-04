@@ -57,6 +57,7 @@ class OutboxWebSocketIntegrationTest {
                 null
         );
 
+        event.persistAndFlush();
         // Chama consume diretamente sem precisar de WebSocket real
         // (a ausência de conexões WebSocket abertas faz broadcast ser no-op)
         assertDoesNotThrow(() -> consumer.consume(event));
@@ -84,6 +85,7 @@ class OutboxWebSocketIntegrationTest {
                 null
         );
 
+        event.persistAndFlush();
         assertDoesNotThrow(() -> consumer.consume(event));
         org.junit.jupiter.api.Assertions.assertNotEquals("0", cursorService.currentCursor(canonical));
     }
@@ -102,6 +104,7 @@ class OutboxWebSocketIntegrationTest {
                 null
         );
 
+        event.persistAndFlush();
         assertDoesNotThrow(() -> consumer.consume(event));
     }
 
@@ -130,4 +133,19 @@ class OutboxWebSocketIntegrationTest {
         String cursor = cursorService.currentCursor(canonical);
         org.junit.jupiter.api.Assertions.assertNotEquals("0", cursor);
     }
+    @Test
+    @Transactional
+    void outraInstanciaDoConsumidorNaoCriaCursorParaEventoJaProjetado() {
+        String canonical = "bc1q-replica-" + UUID.randomUUID();
+        OutboxEvent event = OutboxEvent.create("Address", canonical, "PET_STATE_CHANGED",
+                "{\"address\":\"" + canonical + "\",\"eventType\":\"PET_STATE_CHANGED\"}", Instant.now(), null);
+        event.persistAndFlush();
+        consumer.consume(event);
+        String first = cursorService.currentCursor(canonical);
+        OutboxWebSocketConsumer replica = new OutboxWebSocketConsumer(cursorService, new com.fasterxml.jackson.databind.ObjectMapper());
+        // Uma nova instância não pode depender das chaves do heap da instância anterior.
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> replica.consume(event));
+        assertEquals(first, cursorService.currentCursor(canonical));
+    }
+
 }

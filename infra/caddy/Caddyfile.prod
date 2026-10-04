@@ -11,18 +11,25 @@
 
 {
     # E-mail para notificações de expiração do certificado Let's Encrypt
-    email "infra@{env.DOMAIN}"
+    email "infra@{$DOMAIN}"
     http_port  80
     https_port 443
     admin off
 }
 
-{env.DOMAIN} {
+(api_proxy_headers) {
+    header_up -Forwarded
+    header_up -X-Forwarded-*
+    header_up X-Forwarded-Proto https
+    header_up X-Forwarded-Host {host}
+    header_up X-Forwarded-For {remote_host}
+}
+
+{$DOMAIN} {
     # API REST Quarkus
     handle /api/* {
         reverse_proxy api:8080 {
-            header_up X-Forwarded-Proto https
-            header_up X-Forwarded-For  {remote_host}
+            import api_proxy_headers
             # Timeout para operações longas (ex.: geração de arte via IA)
             transport http {
                 read_timeout  120s
@@ -39,13 +46,16 @@
         remote_ip 127.0.0.1/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
     }
     handle @observabilidade {
-        reverse_proxy @interno api:8080
+        reverse_proxy @interno api:8080 {
+            import api_proxy_headers
+        }
         respond "Acesso negado" 403
     }
 
     # WebSocket — eventos em tempo real
     handle /ws/* {
         reverse_proxy api:8080 {
+            import api_proxy_headers
             flush_interval -1
             header_up Connection {http.upgrade}
             header_up Upgrade   {http.upgrade}
@@ -76,6 +86,6 @@
 }
 
 # HTTP → HTTPS
-http://{env.DOMAIN} {
-    redir https://{env.DOMAIN}{uri} permanent
+http://{$DOMAIN} {
+    redir https://{$DOMAIN}{uri} permanent
 }

@@ -48,7 +48,6 @@ public class RateLimitFilter implements ContainerRequestFilter {
     /** Janela padrão do rate limit. */
     static final Duration DEFAULT_WINDOW = Duration.ofMinutes(1);
 
-    private static final String X_FORWARDED_FOR = "X-Forwarded-For";
     private static final String HEALTH_PATH = "/q/health";
     private static final String METRICS_PATH = "/q/metrics";
 
@@ -61,6 +60,9 @@ public class RateLimitFilter implements ContainerRequestFilter {
     @ConfigProperty(name = "satoshi-pet.rate-limit.window", defaultValue = "PT1M")
     Duration window = DEFAULT_WINDOW;
 
+    @ConfigProperty(name = "satoshi-pet.rate-limit.max-identities", defaultValue = "10000")
+    int maxIdentities = 10_000;
+
     @Inject
     AuthenticatedSession authenticatedSession;
 
@@ -70,6 +72,8 @@ public class RateLimitFilter implements ContainerRequestFilter {
 
     private final ConcurrentMap<String, WindowCounter> counters = new ConcurrentHashMap<>();
     private final Clock clock;
+    private long lastSweepAt = Long.MIN_VALUE;
+    private long nextSweepAt = Long.MIN_VALUE;
 
     /** Construtor CDI e fallback para testes unitários sem contexto HTTP. */
     public RateLimitFilter() {
@@ -97,9 +101,7 @@ public class RateLimitFilter implements ContainerRequestFilter {
         long windowMillis = configuredWindowMillis();
 
         long now = clock.millis();
-        WindowCounter counter = counters.computeIfAbsent(key,
-                ignored -> new WindowCounter(now));
-        Decision decision = counter.tryAcquire(maxRequests, windowMillis, now);
+        Decision decision = acquire(key, maxRequests, windowMillis, now);
 
         if (decision.allowed()) {
             return;
@@ -113,6 +115,26 @@ public class RateLimitFilter implements ContainerRequestFilter {
                         .entity(new RateLimitBody(retryAfterSeconds))
                         .build()
         );
+    }
+
+    private Decision acquire(String key, int limit, long windowMillis, long now) {
+        // Remoção e consumo compartilham lock: expirar uma chave não pode reiniciar
+        // a quota de um contador que outra requisição acabou de renovar.
+        synchronized (counters) {
+            if (now >= nextSweepAt || now < lastSweepAt) {
+                counters.entrySet().removeIf(entry -> entry.getValue().expired(windowMillis, now));
+                lastSweepAt = now;
+                nextSweepAt = now > Long.MAX_VALUE - windowMillis ? Long.MAX_VALUE : now + windowMillis;
+            }
+            WindowCounter counter = counters.get(key);
+            if (counter == null) {
+                int capacity = maxIdentities > 0 ? maxIdentities : 10_000;
+                if (counters.size() >= capacity) return new Decision(false, windowMillis);
+                counter = new WindowCounter(now);
+                counters.put(key, counter);
+            }
+            return counter.tryAcquire(limit, windowMillis, now);
+        }
     }
 
     /** Não limita probes e scraping de endpoints operacionais. */
@@ -152,17 +174,8 @@ public class RateLimitFilter implements ContainerRequestFilter {
         }
     }
 
-    /** Extrai IP do cliente, considerando proxies reversos. */
+    /** Usa o transporte já validado pelo Quarkus e sua configuração de proxies confiáveis. */
     String extractClientIp(ContainerRequestContext request) {
-        String forwarded = request.getHeaderString(X_FORWARDED_FOR);
-        if (forwarded != null && !forwarded.isBlank()) {
-            // Pega o primeiro IP da cadeia (cliente original).
-            String firstHop = forwarded.split(",", 2)[0].trim();
-            if (!firstHop.isBlank()) {
-                return firstHop;
-            }
-        }
-
         if (httpRequest != null && httpRequest.remoteAddress() != null) {
             String host = httpRequest.remoteAddress().host();
             if (host != null && !host.isBlank()) {
@@ -209,6 +222,10 @@ public class RateLimitFilter implements ContainerRequestFilter {
 
         WindowCounter(long windowStart) {
             this.windowStart = windowStart;
+        }
+
+        synchronized boolean expired(long windowMs, long now) {
+            return now < windowStart || now - windowStart >= windowMs;
         }
 
         /**

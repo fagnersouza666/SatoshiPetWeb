@@ -1,8 +1,8 @@
 package br.com.satoshipet.api.account;
 
 import br.com.satoshipet.api.btc.BitcoinAddressValidator;
-import br.com.satoshipet.api.isolation.AccountPrivateDataWipePort;
-import br.com.satoshipet.api.isolation.PushSubscriptionPort;
+import br.com.satoshipet.api.isolation.AccountConfigurationWipeService;
+import br.com.satoshipet.api.pet.Pet;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
@@ -31,17 +31,14 @@ public class AccountAddressChangeService {
     private static final Logger LOG = Logger.getLogger(AccountAddressChangeService.class);
 
     private final BitcoinAddressValidator addressValidator;
-    private final AccountPrivateDataWipePort wipePort;
-    private final PushSubscriptionPort pushPort;
+    private final AccountConfigurationWipeService wipePort;
 
     public AccountAddressChangeService(
             BitcoinAddressValidator addressValidator,
-            AccountPrivateDataWipePort wipePort,
-            PushSubscriptionPort pushPort
+            AccountConfigurationWipeService wipePort
     ) {
         this.addressValidator = addressValidator;
         this.wipePort = wipePort;
-        this.pushPort = pushPort;
     }
 
     /**
@@ -54,12 +51,24 @@ public class AccountAddressChangeService {
      */
     @Transactional
     public Address change(Account account, String newAddress, Instant now) {
+        return change(account, newAddress, null, now);
+    }
+
+    @Transactional
+    public Address change(Account account, String newAddress, String petName, Instant now) {
         Objects.requireNonNull(account, "account");
         Objects.requireNonNull(newAddress, "newAddress");
         Objects.requireNonNull(now, "now");
+        AccountMutationLock.acquire();
+        Account currentAccount = Account.findById(account.id);
+        if (currentAccount == null) {
+            throw new AddressChangeException("account_missing", "Conta não encontrada.");
+        }
+        Account.getEntityManager().flush();
+        Account.getEntityManager().refresh(currentAccount);
 
         // Verifica janela de 72h
-        if (account.addressChangeDeadline == null || !now.isBefore(account.addressChangeDeadline)) {
+        if (currentAccount.addressChangeDeadline == null || !now.isBefore(currentAccount.addressChangeDeadline)) {
             throw new AddressChangeException("window_expired",
                     "O prazo para troca de endereço expirou (72h após o registro).");
         }
@@ -71,17 +80,9 @@ public class AccountAddressChangeService {
         }
         String canonical = addressValidator.canonicalize(newAddress);
 
-        // Desfaz vínculo atual
-        AccountAddressBinding.findActivePrimary(account).ifPresent(b -> {
-            b.unbind(now);
-            // Notifica portas de isolamento (dados privados vinculados ao endereço antigo)
-            wipePort.wipe(account.id);
-        });
-        AccountAddressBinding.getEntityManager().flush();
-
         // Reutiliza endereço de vínculo anterior ou busca/cria globalmente
         Optional<AccountAddressBinding> priorBinding =
-                AccountAddressBinding.findByAccountAndCanonical(account, canonical);
+                AccountAddressBinding.findByAccountAndCanonical(currentAccount, canonical);
 
         Address destination = priorBinding.map(b -> b.address)
                 .or(() -> Address.findByNetworkAndCanonical("mainnet", canonical))
@@ -91,10 +92,25 @@ public class AccountAddressChangeService {
                     return created;
                 });
 
+        Optional<AccountAddressBinding> active = AccountAddressBinding.findActivePrimary(currentAccount);
+        if (active.isPresent() && active.get().address.id.equals(destination.id)) return destination;
+        Optional<Pet> previousPet = active.flatMap(b -> Pet.findByAddress(b.address));
+        Optional<Pet> destinationPet = Pet.findByAddress(destination);
+        java.util.stream.Stream.concat(previousPet.stream(), destinationPet.stream())
+                .map(p -> p.id).distinct().sorted().forEach(Pet::lockForUpdate);
+        String name = petName == null ? previousPet.map(p -> p.name).orElse("Satoshi") : petName.trim();
+        if (destinationPet.isEmpty() && (name.isBlank() || name.length() > 100)) {
+            throw new AddressChangeException("invalid_pet_name", "Nome do pet deve ter entre 1 e 100 caracteres.");
+        }
+        active.ifPresent(b -> b.unbind(now));
+        wipePort.wipe(currentAccount.id);
+        AccountAddressBinding.getEntityManager().flush();
+
         priorBinding.ifPresentOrElse(
                 existing -> existing.rebindAsPrimary(now),
-                () -> AccountAddressBinding.create(account, destination, true, now).persist()
+                () -> AccountAddressBinding.create(currentAccount, destination, true, now).persist()
         );
+        if (destinationPet.isEmpty()) Pet.create(destination, currentAccount, name, now).persist();
 
         LOG.infof("Troca de endereço: account=%s → address=%s canonical=%s",
                 account.id, destination.id, canonical);

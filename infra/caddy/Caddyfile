@@ -24,6 +24,14 @@
     admin 0.0.0.0:2019
 }
 
+(api_proxy_headers) {
+    header_up -Forwarded
+    header_up -X-Forwarded-*
+    header_up X-Forwarded-Proto https
+    header_up X-Forwarded-Host {host}
+    header_up X-Forwarded-For {remote_host}
+}
+
 # HTTPS local
 :443 {
     tls internal
@@ -37,20 +45,22 @@
 
     # Quarkus health, métricas e liveness/readiness probes
     handle /q/* {
-        reverse_proxy api:8080
+        reverse_proxy api:8080 {
+            import api_proxy_headers
+        }
     }
 
     # API REST Quarkus (/api/v1/...)
     handle /api/* {
         reverse_proxy api:8080 {
-            header_up X-Forwarded-Proto https
-            header_up X-Forwarded-For {remote_host}
+            import api_proxy_headers
         }
     }
 
     # WebSocket — eventos em tempo real (SSE ou WS)
     handle /ws/* {
         reverse_proxy api:8080 {
+            import api_proxy_headers
             # Mantém a conexão WebSocket ativa
             flush_interval -1
             header_up Connection {http.upgrade}

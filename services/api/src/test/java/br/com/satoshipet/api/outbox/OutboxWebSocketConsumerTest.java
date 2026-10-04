@@ -1,192 +1,68 @@
 package br.com.satoshipet.api.outbox;
 
-import br.com.satoshipet.api.realtime.AccountWebSocket;
-import br.com.satoshipet.api.realtime.AddressWebSocket;
 import br.com.satoshipet.api.realtime.RealtimeEventCursorService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.Instant;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
 class OutboxWebSocketConsumerTest {
-
-    @Mock
-    AddressWebSocket addressWebSocket;
-
-    @Mock
-    AccountWebSocket accountWebSocket;
-
-    RealtimeEventCursorService cursorService;
-
-    OutboxWebSocketConsumer consumer;
+    private RealtimeEventCursorService cursorService;
+    private OutboxWebSocketConsumer consumer;
 
     @BeforeEach
-    void setUp() {
-        cursorService = new RealtimeEventCursorService();
-        consumer = new OutboxWebSocketConsumer(
-                addressWebSocket, accountWebSocket, cursorService, new ObjectMapper());
+    void setup() {
+        cursorService = mock(RealtimeEventCursorService.class);
+        consumer = new OutboxWebSocketConsumer(cursorService, new ObjectMapper());
     }
 
-    @Test
-    void supportsEventosBitcoin() {
-        assertTrue(consumer.supports("BITCOIN_TRANSACTION_OBSERVED"));
-        assertTrue(consumer.supports("BITCOIN_FEEDING_APPLIED"));
-    }
+    @ParameterizedTest
+    @ValueSource(strings = {"BITCOIN_TRANSACTION_OBSERVED", "PET_STATE_CHANGED", "TEST_HEARTBEAT"})
+    void aceitaSomenteFamiliasDoCanalPublico(String type) { assertTrue(consumer.supports(type)); }
 
     @Test
-    void supportsEventosTeste() {
-        assertTrue(consumer.supports("TEST_EVENT"));
-        assertTrue(consumer.supports("TEST_HEARTBEAT"));
-    }
-
-    @Test
-    void supportsEventosPet() {
-        assertTrue(consumer.supports("PET_FEEDING_APPLIED"));
-        assertTrue(consumer.supports("PET_BORN"));
-        assertTrue(consumer.supports("PET_STATE_CHANGED"));
-    }
-
-    @Test
-    void naoSuportaOutrosEventos() {
-        assertTrue(consumer.supports("PET_FEEDING_APPLIED"));
+    void naoAceitaEventoPrivadoOuTipoAusente() {
         assertFalse(consumer.supports("DCA_RECOMMENDATION_GENERATED"));
         assertFalse(consumer.supports(null));
         assertFalse(consumer.supports(""));
     }
 
     @Test
-    void consumeEventoPetUsaCampoAddressDoPayload() {
-        OutboxEvent event = criarEvento(
-                "Pet",
-                UUID.randomUUID().toString(),
-                "PET_STATE_CHANGED",
-                "{\"address\":\"bc1qfromPetPayload\",\"eventType\":\"PET_STATE_CHANGED\"}");
-        doNothing().when(addressWebSocket).broadcast(anyString(), anyString(), any());
-
-        assertEquals("bc1qfromPetPayload", consumer.resolveCanonical(event));
+    void projetaEnderecoDoAgregadoSemDependerDeConexaoLocal() {
+        OutboxEvent event = event("Address", "bc1qaddress", "{}");
         consumer.consume(event);
-
-        verify(addressWebSocket).broadcast(eq("bc1qfromPetPayload"), anyString(), any());
-        verify(accountWebSocket, never()).send(anyString(), anyString(), any());
+        verify(cursorService).record(event, "bc1qaddress");
     }
 
     @Test
-    void consumeEventoPetNaoEspalhaNoWebSocketDeConta() {
-        OutboxEvent event = criarEvento(
-                "Pet",
-                UUID.randomUUID().toString(),
-                "PET_FEEDING_APPLIED",
-                "{\"address\":\"bc1qpetpublic\",\"eventType\":\"PET_FEEDING_APPLIED\",\"amountSats\":5000}");
-        doNothing().when(addressWebSocket).broadcast(anyString(), anyString(), any());
-
+    void projetaEventoPetUsandoEnderecoPublicoDoPayload() {
+        OutboxEvent event = event("Pet", UUID.randomUUID().toString(), "{\"address\":\"bc1qpet\"}");
         consumer.consume(event);
-
-        verify(accountWebSocket, never()).send(anyString(), anyString(), any());
-        verify(addressWebSocket).broadcast(eq("bc1qpetpublic"), anyString(), any());
+        verify(cursorService).record(event, "bc1qpet");
     }
 
     @Test
-    void consumeEventoDeAddressETransmiteViaBroadcast() {
-        OutboxEvent event = criarEvento("Address", "bc1qtest1234", "BITCOIN_TRANSACTION_OBSERVED",
-                "{\"txid\":\"abc\",\"amountSats\":100000}");
-        doNothing().when(addressWebSocket).broadcast(anyString(), anyString(), any());
-
-        consumer.consume(event);
-
-        verify(addressWebSocket).broadcast(eq("bc1qtest1234"), anyString(), any());
+    void payloadAusenteOuIlegivelNaoVazaParaOutroCanal() {
+        consumer.consume(event("Pet", "id", "{\"privateField\":\"secreto\"}"));
+        consumer.consume(event("Pet", "id", "invalid-json"));
+        verifyNoInteractions(cursorService);
     }
 
     @Test
-    void reentregaDoMesmoEventoNaoCriaNovoCursorNemBroadcast() {
-        OutboxEvent event = criarEvento("Address", "bc1qdedup", "BITCOIN_TRANSACTION_OBSERVED",
-                "{\"txid\":\"abc\"}");
-        doNothing().when(addressWebSocket).broadcast(anyString(), anyString(), any());
-
-        consumer.consume(event);
-        String cursorAplicado = cursorService.currentCursor("bc1qdedup");
-        consumer.consume(event);
-
-        assertEquals(cursorAplicado, cursorService.currentCursor("bc1qdedup"));
-        verify(addressWebSocket, times(1)).broadcast(eq("bc1qdedup"), anyString(), any());
+    void falhaDePersistenciaPermiteRetryPeloPublisher() {
+        OutboxEvent event = event("Address", "bc1qretry", "{}");
+        when(cursorService.record(event, "bc1qretry")).thenThrow(new IllegalStateException("transitório"));
+        assertThrows(IllegalStateException.class, () -> consumer.consume(event));
     }
 
-    @Test
-    void falhaNaAplicacaoDeixaEventoDisponivelParaRetry() {
-        OutboxEvent event = criarEvento("Address", "bc1qretry", "BITCOIN_TRANSACTION_OBSERVED",
-                "{\"txid\":\"retry\"}");
-        doThrow(new IllegalStateException("falha transitória"))
-                .doNothing()
-                .when(addressWebSocket)
-                .broadcast(anyString(), anyString(), any());
-
-        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
-                () -> consumer.consume(event));
-        consumer.consume(event);
-
-        verify(addressWebSocket, times(2)).broadcast(eq("bc1qretry"), anyString(), any());
-    }
-
-    @Test
-    void consumeEventoNaoAddressUsaCampoAddressDoPayload() {
-        OutboxEvent event = criarEvento("Account", "some-account-id", "BITCOIN_TRANSACTION_OBSERVED",
-                "{\"address\":\"bc1qfromPayload\",\"txid\":\"xyz\"}");
-        doNothing().when(addressWebSocket).broadcast(anyString(), anyString(), any());
-
-        consumer.consume(event);
-
-        verify(addressWebSocket).broadcast(eq("bc1qfromPayload"), anyString(), any());
-    }
-
-    @Test
-    void consumeEventoSemEnderecoNaoChama() {
-        OutboxEvent event = criarEvento("Account", "acc-id", "BITCOIN_TRANSACTION_OBSERVED",
-                "{\"txid\":\"xyz\",\"noAddress\":true}");
-
-        consumer.consume(event);
-
-        verify(addressWebSocket, never()).broadcast(anyString(), anyString(), any());
-    }
-
-    @Test
-    void resolveCanonicalParaAggregateTypeAddress() {
-        OutboxEvent event = criarEvento("Address", "bc1qtarget", "BITCOIN_TRANSACTION_OBSERVED", "{}");
-
-        String canonical = consumer.resolveCanonical(event);
-
-        assertNotNull(canonical);
-        assertTrue(canonical.equals("bc1qtarget"));
-    }
-
-    @Test
-    void resolveCanonicalRetornaNullSemCampoAddress() {
-        OutboxEvent event = criarEvento("Other", "id123", "BITCOIN_TRANSACTION_OBSERVED", "{\"foo\":\"bar\"}");
-
-        String canonical = consumer.resolveCanonical(event);
-
-        assertNull(canonical);
-    }
-
-    private OutboxEvent criarEvento(String aggregateType, String aggregateId, String eventType, String payload) {
-        return OutboxEvent.create(aggregateType, aggregateId, eventType, payload, Instant.now(), null);
+    private OutboxEvent event(String aggregate, String id, String payload) {
+        return OutboxEvent.create(aggregate, id, "PET_STATE_CHANGED", payload, Instant.now(), null);
     }
 }

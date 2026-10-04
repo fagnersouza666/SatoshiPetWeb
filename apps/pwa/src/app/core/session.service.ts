@@ -9,6 +9,9 @@ import { AccountInfo } from './models/account.model';
  */
 @Injectable({ providedIn: 'root' })
 export class SessionService {
+  private readonly _revision = signal(0);
+  readonly revision = this._revision.asReadonly();
+
   private readonly _account = signal<AccountInfo | null>(null);
 
   /** Dados da conta autenticada, ou `null` se não autenticado. */
@@ -22,6 +25,7 @@ export class SessionService {
    * Chamado após verificação bem-sucedida do magic-link.
    */
   setSession(account: AccountInfo): void {
+    if (this._account()?.id !== account.id) this._revision.update((value) => value + 1);
     this._account.set(account);
   }
 
@@ -30,6 +34,7 @@ export class SessionService {
    * Chamado no logout — complementar à limpeza de caches (CA-067).
    */
   clearSession(): void {
+    this._revision.update((value) => value + 1);
     this._account.set(null);
   }
 }

@@ -81,6 +81,11 @@ public class RecoveryCode extends PanacheEntityBase {
         return find("codeHash", codeHash).firstResultOptional();
     }
 
+    /** Consumo compare-and-set no banco; somente o vencedor pode revogar/criar sessões. */
+    public static long consumeIfAvailable(UUID id, Instant now) {
+        return update("usedAt = ?1 WHERE id = ?2 AND usedAt IS NULL AND createdAt <= ?1", now, id);
+    }
+
     /** Remove todos os códigos de uma conta (para regeneração). */
     public static long deleteByAccount(Account account) {
         return delete("account", account);

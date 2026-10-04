@@ -10,7 +10,7 @@ const ADDRESS = 'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh';
 
 describe('EnderecoComponent', () => {
   let fixture: ComponentFixture<EnderecoComponent>;
-  let apiSpy: { get: ReturnType<typeof vi.fn> };
+  let apiSpy: { get: ReturnType<typeof vi.fn>; getFresh?: ReturnType<typeof vi.fn> };
 
   async function criarComponente(resposta: Observable<PublicAddressInfo>) {
     apiSpy = { get: vi.fn().mockReturnValue(resposta) };
@@ -126,5 +126,56 @@ describe('EnderecoComponent', () => {
     const alerta = fixture.nativeElement.querySelector('[role="alert"]');
     expect(alerta).not.toBeNull();
     expect(alerta?.textContent).toContain('Não foi possível carregar os dados do endereço');
+  });
+  it('informa saldo desconhecido sem apresentar zero', async () => {
+    await criarComponente(
+      of({ address: ADDRESS, balanceKnown: false, confirmedSats: null } as PublicAddressInfo),
+    );
+    expect(fixture.nativeElement.textContent).toContain('Saldo ainda desconhecido');
+    expect(fixture.nativeElement.textContent).not.toContain('0 sats');
+  });
+
+  it('avisa dado desatualizado preservando o último saldo conhecido', async () => {
+    await criarComponente(
+      of({
+        address: ADDRESS,
+        balanceKnown: true,
+        balanceFresh: false,
+        confirmedSats: 1500,
+      } as PublicAddressInfo),
+    );
+    expect(fixture.nativeElement.textContent).toContain('1500 sats');
+    expect(fixture.nativeElement.textContent).toContain('Saldo desatualizado');
+  });
+
+  it('eventos atualizam via HTTP sem cache e resposta antiga não regride o estado', async () => {
+    const initial = new Subject<PublicAddressInfo>();
+    await criarComponente(initial);
+    const ws = TestBed.inject(AddressWebSocketService);
+    const callback = vi.mocked(ws.connect).mock.calls[0][1];
+    const first = new Subject<PublicAddressInfo>();
+    const second = new Subject<PublicAddressInfo>();
+    apiSpy.getFresh = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    callback({ type: 'EVENT', cursor: '1', data: { eventType: 'PET_STATE_CHANGED' } });
+    callback({ type: 'EVENT', cursor: '2', data: { eventType: 'PET_STATE_CHANGED' } });
+    second.next({
+      address: ADDRESS,
+      petName: 'Pixel',
+      presentation: 'CREATURE',
+      petState: 'FAMINTO',
+    });
+    await fixture.whenStable();
+    initial.next({ address: ADDRESS, petName: 'Pixel', presentation: 'EGG' });
+    first.next({
+      address: ADDRESS,
+      petName: 'Pixel',
+      presentation: 'CREATURE',
+      petState: 'ALIMENTADO',
+    });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.pet-state')?.textContent).toContain('Faminto');
+    expect(fixture.nativeElement.textContent).not.toContain('Alimentado');
+    expect(apiSpy.getFresh).toHaveBeenCalledWith(`/v1/public/addresses/${ADDRESS}`);
   });
 });

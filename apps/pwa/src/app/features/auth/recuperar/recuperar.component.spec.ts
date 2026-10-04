@@ -1,74 +1,88 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
-import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { ActivatedRoute, convertToParamMap, provideRouter, Router } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
 import { AuthService } from '../../../core/auth.service';
 import { RecuperarComponent } from './recuperar.component';
 
 describe('RecuperarComponent', () => {
   beforeEach(() => TestBed.resetTestingModule());
-  function setup(recoverAndNavigate: ReturnType<typeof vi.fn>) {
+  function setup(token: string | null = null) {
+    const auth = {
+      requestRecoveryEmail: vi.fn().mockResolvedValue(undefined),
+      recoverAccess: vi.fn().mockResolvedValue('NOVO-CODIGO-SECRETO'),
+      openRecoveredAccount: vi.fn().mockResolvedValue(undefined),
+    };
     TestBed.configureTestingModule({
       imports: [RecuperarComponent],
       providers: [
         provideRouter([]),
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        { provide: AuthService, useValue: { recoverAndNavigate } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParamMap: convertToParamMap(token ? { token } : {}) } },
+        },
+        { provide: AuthService, useValue: auth },
       ],
     });
+    vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
     const fixture = TestBed.createComponent(RecuperarComponent);
     fixture.detectChanges();
-    const input = fixture.nativeElement.querySelector('input');
-    input.value = ' recovery-fixture ';
-    input.dispatchEvent(new Event('input'));
+    const set = (name: string, value: string) => {
+      const input = fixture.nativeElement.querySelector(`[formControlName="${name}"]`);
+      input.value = value;
+      input.dispatchEvent(new Event('input'));
+    };
+    set('recoveryCode', ' recovery-fixture ');
     const submit = () =>
       fixture.nativeElement.querySelector('form').dispatchEvent(new Event('submit'));
-    return { fixture, submit };
+    return { auth, fixture, set, submit };
   }
 
-  it('recupera a sessão uma vez e não promete enviar um e-mail', async () => {
-    let resolve!: () => void;
-    const recover = vi.fn(
-      () =>
-        new Promise<void>((done) => {
-          resolve = done;
-        }),
-    );
-    const { fixture, submit } = setup(recover);
+  it('envia confirmação para o novo e-mail antes de recuperar', async () => {
+    const { auth, fixture, set, submit } = setup();
+    set('email', 'novo@example.invalid');
     submit();
     submit();
-    expect(recover).toHaveBeenCalledExactlyOnceWith('recovery-fixture');
-    resolve();
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Acesso recuperado');
-    expect(fixture.nativeElement.textContent).not.toContain('Verifique seu e-mail');
+    expect(auth.requestRecoveryEmail).toHaveBeenCalledExactlyOnceWith(
+      'recovery-fixture',
+      'novo@example.invalid',
+    );
+    expect(auth.recoverAccess).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('Verifique seu novo e-mail');
   });
 
-  it('exibe erro e permite nova tentativa após código rejeitado', async () => {
-    const recover = vi.fn().mockRejectedValue(new HttpErrorResponse({ status: 401 }));
-    const { fixture, submit } = setup(recover);
+  it('usa token verificado e exige guardar novo código antes de abrir conta', async () => {
+    const { auth, fixture, submit } = setup('verified-token');
+    submit();
     submit();
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(
-      'Código inválido',
+    expect(auth.recoverAccess).toHaveBeenCalledExactlyOnceWith(
+      'recovery-fixture',
+      'verified-token',
     );
+    expect(fixture.nativeElement.textContent).toContain('NOVO-CODIGO-SECRETO');
+    expect(auth.openRecoveredAccount).not.toHaveBeenCalled();
+    const button = Array.from(
+      fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
+    ).find((item) => item.textContent?.includes('Guardei'))!;
+    button.click();
+    await fixture.whenStable();
+    expect(auth.openRecoveredAccount).toHaveBeenCalledOnce();
+  });
+
+  it.each([401, 503])('falha %s permite nova tentativa e preserva etapa', async (status) => {
+    const { auth, fixture, submit } = setup('verified-token');
+    auth.recoverAccess.mockRejectedValue(new HttpErrorResponse({ status }));
+    submit();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('NOVO-CODIGO-SECRETO');
     expect(fixture.nativeElement.querySelector('button').disabled).toBe(false);
     submit();
     await fixture.whenStable();
-    expect(recover).toHaveBeenCalledTimes(2);
-  });
-  it('falha temporária não afirma que o código é inválido', async () => {
-    const recover = vi.fn().mockRejectedValue(new HttpErrorResponse({ status: 503 }));
-    const { fixture, submit } = setup(recover);
-    submit();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain(
-      'Tente novamente',
-    );
-    expect(fixture.nativeElement.textContent).not.toContain('Código inválido');
+    expect(auth.recoverAccess).toHaveBeenCalledTimes(2);
   });
 });

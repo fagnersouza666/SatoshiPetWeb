@@ -12,6 +12,7 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -33,8 +34,10 @@ class PetArtworkPersistenceTest {
     ObjectMapper objectMapper;
 
     @Test
-    void flywayCorrenteEhVersao7() {
-        assertEquals("7", flyway.info().current().getVersion().getVersion());
+    void flywayAplicouMigrationDaArte() {
+        assertTrue(Arrays.stream(flyway.info().applied())
+                .anyMatch(migration -> migration.getVersion() != null
+                        && "7".equals(migration.getVersion().getVersion())));
     }
 
     @Test

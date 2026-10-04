@@ -5,6 +5,7 @@ import br.com.satoshipet.api.account.MagicLinkToken;
 import br.com.satoshipet.api.account.MagicLinkTokenService;
 import br.com.satoshipet.api.account.Session;
 import br.com.satoshipet.api.account.SessionService;
+import br.com.satoshipet.api.account.SessionCookieFactory;
 import br.com.satoshipet.api.platform.SessionAuthFilter;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
@@ -123,23 +124,18 @@ public class MagicLinkVerifyResource {
                 .build();
     }
 
+    @Inject
+    SessionCookieFactory cookies;
+
     private NewCookie buildSessionCookie(String rawToken) {
-        return new NewCookie.Builder(SessionAuthFilter.SESSION_COOKIE)
-                .value(rawToken)
-                .path("/")
-                .httpOnly(true)
-                .secure(false) // em produção habilitar via reverse proxy com HTTPS
-                .sameSite(NewCookie.SameSite.STRICT)
-                .maxAge(60 * 60 * 24 * 30) // 30 dias em segundos
-                .build();
+        return cookies.create(rawToken);
     }
 
+    @Inject
+    br.com.satoshipet.api.platform.ClientAddress clientAddress;
+
     private String extractIp(ContainerRequestContext ctx) {
-        String forwarded = ctx.getHeaderString("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return "unknown";
+        return clientAddress.value();
     }
 
     /** Body da requisição de verificação. */

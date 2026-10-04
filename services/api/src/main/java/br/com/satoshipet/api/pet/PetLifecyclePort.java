@@ -56,6 +56,12 @@ public interface PetLifecyclePort {
     void onProviderFailure(UUID petId, Instant when);
 
     /**
+     * Reavalia a apresentação depois da aprovação da arte, usando somente o
+     * saldo reconciliado disponível. Não cria recebimento nem alimentação.
+     */
+    void onArtworkApproved(UUID petId, Instant now);
+
+    /**
      * Consome a reserva pelo tempo decorrido e atualiza o estado emocional.
      */
     void tick(UUID petId, Instant now);

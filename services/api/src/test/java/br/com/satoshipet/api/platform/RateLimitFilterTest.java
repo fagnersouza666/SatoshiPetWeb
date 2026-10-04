@@ -2,45 +2,37 @@ package br.com.satoshipet.api.platform;
 
 import br.com.satoshipet.api.account.Account;
 import br.com.satoshipet.api.account.Session;
+import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.net.SocketAddress;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Proxy;
+import java.time.Clock;
 import java.time.Duration;
-import java.util.UUID;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertAll;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
 
 class RateLimitFilterTest {
-
     @Test
     void limitaAnonimosPorIpEIsolaEnderecos() {
         var filter = new RateLimitFilter();
         filter.maxRequestsPerIp = 1;
         filter.window = Duration.ofSeconds(1);
-
-        ContainerRequestContext primeiroIp = request("198.51.100.10");
-        ContainerRequestContext segundoIp = request("198.51.100.11");
-
-        filter.filter(primeiroIp);
-        filter.filter(segundoIp);
-        filter.filter(primeiroIp);
-
-        var response = abortedResponse(primeiroIp);
-        assertAll(
-                () -> assertEquals(429, response.getStatus()),
-                () -> assertEquals("1", response.getHeaderString("Retry-After")),
-                () -> assertEquals("rate_limited", responseBody(response).code())
-        );
-        verify(segundoIp, never()).abortWith(any());
+        Request first = request("198.51.100.10");
+        Request second = request("198.51.100.11");
+        apply(filter, first); apply(filter, second); apply(filter, first);
+        assertEquals(429, first.aborted.get().getStatus());
+        assertEquals("1", first.aborted.get().getHeaderString("Retry-After"));
+        assertEquals("rate_limited", ((RateLimitFilter.RateLimitBody) first.aborted.get().getEntity()).code());
+        assertNull(second.aborted.get());
     }
 
     @Test
@@ -48,72 +40,90 @@ class RateLimitFilterTest {
         var filter = new RateLimitFilter();
         filter.maxRequestsPerIp = 1;
         filter.maxRequestsPerAccount = 2;
-
-        var account = mock(Account.class);
-        account.id = UUID.randomUUID();
-        var session = mock(Session.class);
-        session.account = account;
-        var authenticatedSession = mock(AuthenticatedSession.class);
-        when(authenticatedSession.get()).thenReturn(session);
-        filter.authenticatedSession = authenticatedSession;
-
-        ContainerRequestContext request = request("198.51.100.20");
-        filter.filter(request);
-        filter.filter(request);
-        verify(request, never()).abortWith(any());
-
-        filter.filter(request);
-
-        var response = abortedResponse(request);
-        assertEquals(429, response.getStatus());
-        assertEquals("rate_limited", responseBody(response).code());
+        Instant now = Instant.now();
+        Account account = Account.create("test@test.invalid", "UTC", "pt-BR", now);
+        Session session = Session.create(account, "hash", "csrf", now, now.plusSeconds(60), null, null);
+        filter.authenticatedSession = new AuthenticatedSession();
+        filter.authenticatedSession.set(session);
+        Request request = request("198.51.100.20");
+        apply(filter, request); apply(filter, request);
+        assertNull(request.aborted.get());
+        apply(filter, request);
+        assertEquals(429, request.aborted.get().getStatus());
     }
 
     @Test
     void reiniciaJanelaAoExpirar() {
-        var counter = new RateLimitFilter.WindowCounter(1_000L);
-
-        assertEquals(true, counter.tryAcquire(1, 1_000L, 1_000L).allowed());
-        var blocked = counter.tryAcquire(1, 1_000L, 1_999L);
-        assertAll(
-                () -> assertEquals(false, blocked.allowed()),
-                () -> assertEquals(1L, blocked.millisUntilReset()),
-                () -> assertEquals(true, counter.tryAcquire(1, 1_000L, 2_000L).allowed())
-        );
+        var counter = new RateLimitFilter.WindowCounter(1000L);
+        assertTrue(counter.tryAcquire(1, 1000, 1000).allowed());
+        assertFalse(counter.tryAcquire(1, 1000, 1999).allowed());
+        assertEquals(1, counter.tryAcquire(1, 1000, 1999).millisUntilReset());
+        assertTrue(counter.tryAcquire(1, 1000, 2000).allowed());
     }
 
     @Test
     void naoLimitaEndpointsOperacionais() {
         var filter = new RateLimitFilter();
         filter.maxRequestsPerIp = 1;
-        var request = request("/q/health", "198.51.100.30");
-
-        filter.filter(request);
-        filter.filter(request);
-
-        verify(request, never()).abortWith(any());
+        Request request = request("/q/health", "198.51.100.30", "198.51.100.30");
+        apply(filter, request); apply(filter, request);
+        assertNull(request.aborted.get());
     }
 
-    private static ContainerRequestContext request(String ip) {
-        return request("/api/v1/hello", ip);
+    @Test
+    void descartaIdentidadesInativasAposJanelaSemReabrirCotaAtiva() throws Exception {
+        AtomicLong time = new AtomicLong(1000);
+        Clock clock = new Clock() {
+            public ZoneId getZone() { return ZoneId.of("UTC"); }
+            public Clock withZone(ZoneId zone) { return this; }
+            public Instant instant() { return Instant.ofEpochMilli(time.get()); }
+        };
+        var filter = new RateLimitFilter(clock);
+        filter.maxRequestsPerIp = 1;
+        filter.window = Duration.ofSeconds(1);
+        for (int i = 0; i < 100; i++) apply(filter, request("198.51.100." + i));
+        time.set(2100);
+        apply(filter, request("203.0.113.1"));
+        var field = RateLimitFilter.class.getDeclaredField("counters");
+        field.setAccessible(true);
+        assertEquals(1, ((Map<?, ?>) field.get(filter)).size());
+        Request active = request("203.0.113.1");
+        apply(filter, active);
+        assertEquals(429, active.aborted.get().getStatus());
     }
 
-    private static ContainerRequestContext request(String path, String ip) {
-        var request = mock(ContainerRequestContext.class);
-        var uriInfo = mock(UriInfo.class);
-        when(uriInfo.getPath()).thenReturn(path);
-        when(request.getUriInfo()).thenReturn(uriInfo);
-        when(request.getHeaderString("X-Forwarded-For")).thenReturn(ip);
-        return request;
+    @Test
+    void headerForwardedForNaoPermiteTrocarIdentidadeSemProxyConfiavel() {
+        var filter = new RateLimitFilter();
+        filter.maxRequestsPerIp = 1;
+        Request first = request("/api/v1/hello", "198.51.100.1", "203.0.113.1");
+        Request spoofed = request("/api/v1/hello", "198.51.100.2", "203.0.113.1");
+        apply(filter, first); apply(filter, spoofed);
+        assertNotNull(spoofed.aborted.get());
+        assertEquals(429, spoofed.aborted.get().getStatus());
     }
 
-    private static Response abortedResponse(ContainerRequestContext request) {
-        var response = org.mockito.ArgumentCaptor.forClass(Response.class);
-        verify(request).abortWith(response.capture());
-        return response.getValue();
+    private static void apply(RateLimitFilter filter, Request request) {
+        filter.httpRequest = (HttpServerRequest) Proxy.newProxyInstance(HttpServerRequest.class.getClassLoader(),
+                new Class<?>[]{HttpServerRequest.class}, (p, m, args) ->
+                        m.getName().equals("remoteAddress") ? SocketAddress.inetSocketAddress(443, request.remote) : null);
+        filter.filter(request.context);
     }
 
-    private static RateLimitFilter.RateLimitBody responseBody(Response response) {
-        return assertInstanceOf(RateLimitFilter.RateLimitBody.class, response.getEntity());
+    private static Request request(String ip) { return request("/api/v1/hello", ip, ip); }
+    private static Request request(String path, String header, String remote) {
+        var aborted = new AtomicReference<Response>();
+        UriInfo uri = (UriInfo) Proxy.newProxyInstance(UriInfo.class.getClassLoader(), new Class<?>[]{UriInfo.class},
+                (p, m, args) -> m.getName().equals("getPath") ? path : null);
+        ContainerRequestContext context = (ContainerRequestContext) Proxy.newProxyInstance(
+                ContainerRequestContext.class.getClassLoader(), new Class<?>[]{ContainerRequestContext.class},
+                (p, m, args) -> switch (m.getName()) {
+                    case "getHeaderString" -> header;
+                    case "getUriInfo" -> uri;
+                    case "abortWith" -> { aborted.set((Response) args[0]); yield null; }
+                    default -> null;
+                });
+        return new Request(context, aborted, remote);
     }
+    record Request(ContainerRequestContext context, AtomicReference<Response> aborted, String remote) {}
 }

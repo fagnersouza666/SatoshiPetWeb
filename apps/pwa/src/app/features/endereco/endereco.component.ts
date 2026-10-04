@@ -61,6 +61,15 @@ const PET_STATE_LABELS: Record<NonNullable<PublicAddressInfo['petState']>, strin
             </p>
           </div>
 
+          @if (info.balanceKnown === false) {
+            <p role="status">Saldo ainda desconhecido. Aguardando consulta ao provedor.</p>
+          } @else if (info.confirmedSats != null) {
+            <p>Saldo confirmado: {{ info.confirmedSats }} sats</p>
+            @if (info.balanceFresh === false) {
+              <p role="status">Saldo desatualizado. Exibindo o último valor conhecido.</p>
+            }
+          }
+
           @if (info.petName) {
             <div class="pet-block">
               <div class="pet-visual">
@@ -262,33 +271,43 @@ export class EnderecoComponent implements OnInit {
   protected readonly info = signal<PublicAddressInfo | null>(null);
   protected readonly atlasUrl = signal<string | undefined>(undefined);
 
+  private requestVersion = 0;
+
   ngOnInit(): void {
     const address = this.route.snapshot.paramMap.get('address');
     if (address) {
       void this.carregarEndereco(address);
       this.addressWs.connect(address, () => {
-        void this.carregarEndereco(address);
+        void this.carregarEndereco(address, true);
       });
-      this.destroyRef.onDestroy(() => this.addressWs.disconnect());
+      this.destroyRef.onDestroy(() => {
+        this.requestVersion++;
+        this.addressWs.disconnect();
+      });
     }
   }
 
-  private async carregarEndereco(address: string): Promise<void> {
+  private async carregarEndereco(address: string, fresh = false): Promise<void> {
+    const requestVersion = ++this.requestVersion;
     this.carregando.set(true);
     this.erro.set(null);
 
     try {
       const data = await firstValueFrom(
-        this.api.get<PublicAddressInfo>(`/v1/public/addresses/${address}`),
+        fresh
+          ? this.api.getFresh<PublicAddressInfo>(`/v1/public/addresses/${address}`)
+          : this.api.get<PublicAddressInfo>(`/v1/public/addresses/${address}`),
       );
+      if (requestVersion !== this.requestVersion) return;
       this.info.set(data);
       this.atlasUrl.set(
         data.atlasUrl ? `${data.atlasUrl}?v=${data.artworkVersion ?? '0'}` : undefined,
       );
     } catch {
+      if (requestVersion !== this.requestVersion) return;
       this.erro.set('Não foi possível carregar os dados do endereço. Tente novamente.');
     } finally {
-      this.carregando.set(false);
+      if (requestVersion === this.requestVersion) this.carregando.set(false);
     }
   }
 

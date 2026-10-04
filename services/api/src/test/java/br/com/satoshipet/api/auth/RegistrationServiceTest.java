@@ -11,12 +11,15 @@ import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.Instant;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @QuarkusTest
 class RegistrationServiceTest {
@@ -29,6 +32,19 @@ class RegistrationServiceTest {
 
     @Inject
     MagicLinkTokenHasher tokenHasher;
+
+    @ParameterizedTest
+    @ValueSource(strings = {"America/Sao Paulo", "-03:00", "UTC+03:00", "X", "America/Inexistente"})
+    void rejeitaFusoForaDoCatalogoIana(String timezone) {
+        String raw = "tz-" + UUID.randomUUID();
+        Instant now = Instant.now();
+        QuarkusTransaction.requiringNew().run(() -> tokenRepository.persist(MagicLinkToken.issue(
+                raw + "@test.invalid", tokenHasher.hash(raw), now, now.plusSeconds(900))));
+        var error = assertThrows(RegistrationService.RegistrationException.class, () ->
+                registrationService.register(raw, BitcoinTestAddresses.MAINNET_BECH32,
+                        "Pixel", timezone, null, null, Instant.now()));
+        assertEquals("invalid_timezone", error.getCode());
+    }
 
     @Test
     void reutilizaPetExistenteQuandoEnderecoJaMonitorado() {

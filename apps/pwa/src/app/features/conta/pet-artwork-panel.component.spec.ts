@@ -1,3 +1,5 @@
+import { By } from '@angular/platform-browser';
+import { PetSpriteComponent } from '../../shared/pet-sprite/pet-sprite.component';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PetArtworkPanelComponent } from './pet-artwork-panel.component';
 import { PetAccountService } from '../../core/pet-account.service';
@@ -76,5 +78,37 @@ describe('PetArtworkPanelComponent', () => {
 
     expect(petAccountSpy.approveArtwork).toHaveBeenCalledOnce();
     expect(petAccountSpy.loadSnapshot).toHaveBeenCalledTimes(2);
+  });
+  it('exibe a criatura da prévia privada enquanto apresentação pública continua EGG', async () => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('canvas')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('img[src="/assets/egg.svg"]')).toBeNull();
+    expect(snapshotAwaiting.presentation).toBe('EGG');
+  });
+
+  it('preserva ovo para arte aprovada quando o saldo leva ao retorno ao ovo', async () => {
+    petAccountSpy.loadSnapshot.mockResolvedValue({
+      ...snapshotAwaiting,
+      atlasUrl: '/api/v1/public/addresses/x/artwork/1/atlas.png',
+      artwork: { generationStatus: 'APPROVED' },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('canvas')).toBeNull();
+    expect(fixture.nativeElement.querySelector('img[src="/assets/egg.svg"]')).not.toBeNull();
+  });
+
+  it('carrega prévia privada com bypass inclusive em instalação com SW antigo', async () => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const sprite = fixture.debugElement.query(By.directive(PetSpriteComponent))
+      .componentInstance as PetSpriteComponent;
+    expect(sprite.atlasUrl()).toBe(
+      '/api/v1/account/pet/artwork/preview/atlas.png?ngsw-bypass=true',
+    );
   });
 });

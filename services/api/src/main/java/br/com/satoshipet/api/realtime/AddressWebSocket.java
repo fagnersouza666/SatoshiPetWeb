@@ -8,6 +8,7 @@ import io.quarkus.websockets.next.OnClose;
 import io.quarkus.websockets.next.OnOpen;
 import io.quarkus.websockets.next.OnTextMessage;
 import io.quarkus.websockets.next.OpenConnections;
+import io.quarkus.websockets.next.UserData;
 import io.quarkus.websockets.next.WebSocket;
 import io.quarkus.websockets.next.WebSocketConnection;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -15,171 +16,124 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
-import java.util.ArrayList;
-import java.util.List;
-
-/**
- * Canal WebSocket para acompanhamento de um endereço Bitcoin em tempo real.
- *
- * <p>Caminho: {@code /api/ws/address/{canonical}}
- *
- * <p>Protocolo:
- * <ol>
- *   <li>Ao conectar, o servidor envia um {@code SNAPSHOT} com o estado atual
- *       e o cursor da última posição conhecida.</li>
- *   <li>Eventos incrementais são enviados como {@code EVENT} com cursor
- *       atualizado.</li>
- *   <li>O servidor envia {@code PING} a cada 30 s; o cliente deve responder
- *       com {@code PONG}.</li>
- *   <li>Para reconexão, o cliente envia {@code {"type":"RECONNECT","cursor":"N"}}
- *       e recebe apenas os eventos posteriores ao cursor (replay do ring buffer).</li>
- * </ol>
- * </p>
- */
+/** Canal público com snapshot e replay da projeção confirmada no banco. */
 @WebSocket(path = "/api/ws/address/{canonical}")
 @ApplicationScoped
 public class AddressWebSocket {
-
     private static final Logger LOG = Logger.getLogger(AddressWebSocket.class);
+    private static final UserData.TypedKey<ConnectionState> STATE =
+            new UserData.TypedKey<>("satoshi-pet.address-cursor");
 
-    @Inject
-    OpenConnections openConnections;
+    @Inject OpenConnections openConnections;
+    @Inject ObjectMapper objectMapper;
+    @Inject RealtimeEventCursorService cursorService;
 
-    @Inject
-    ObjectMapper objectMapper;
-
-    @Inject
-    RealtimeEventCursorService cursorService;
-
-    /**
-     * Envia o snapshot inicial ao conectar, usando o cursor atual do endereço.
-     * Se não houver eventos anteriores, cursor será "0".
-     */
+    /** Registra a conexão para fan-out somente depois de entregar o snapshot inicial. */
     @OnOpen
     @Transactional
-    public String onOpen(WebSocketConnection connection) {
+    public void onOpen(WebSocketConnection connection) {
         try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
             String canonical = connection.pathParam("canonical");
-            LOG.debugf("Nova conexão no canal address:%s id=%s", canonical, connection.id());
-
             String cursor = cursorService.currentCursor(canonical);
-            AddressSnapshot stateData = AddressSnapshot.fromPet(
-                    canonical, PetPublicSnapshot.fromCanonical(canonical), null);
-            return serializeOrNull(new WebSocketSnapshot<>(WebSocketCursor.of(cursor), stateData));
-        }
-    }
-
-    /**
-     * Processa mensagens do cliente (PONG e RECONNECT).
-     * Para RECONNECT, reproduz eventos posteriores ao cursor informado.
-     */
-    @OnTextMessage
-    @Transactional
-    public String onMessage(WebSocketConnection connection, String rawMessage) {
-        try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
-            try {
-                WebSocketClientMessage msg = objectMapper.readValue(rawMessage, WebSocketClientMessage.class);
-
-                return switch (msg.type()) {
-                case "PONG" -> {
-                    LOG.debugf("PONG recebido de %s", connection.id());
-                    yield null; // sem resposta ao PONG
-                }
-                case "RECONNECT" -> {
-                    String requestedCursor = msg.cursor() != null ? msg.cursor().value() : "0";
-                    LOG.debugf("Reconexão com cursor=%s para %s", requestedCursor, connection.id());
-                    String canonical = connection.pathParam("canonical");
-
-                    // Replay dos eventos posteriores ao cursor informado
-                    List<RealtimeEventCursorService.StoredEvent> missed =
-                            cursorService.eventsAfter(canonical, requestedCursor);
-
-                    if (missed.isEmpty()) {
-                        AddressSnapshot stateData = AddressSnapshot.fromPet(
-                                canonical,
-                                PetPublicSnapshot.fromCanonical(canonical),
-                                requestedCursor);
-                        yield serializeOrNull(new WebSocketSnapshot<>(
-                                WebSocketCursor.of(requestedCursor), stateData));
-                    }
-
-                    // Envia cada evento perdido como EVENT; retorna apenas o primeiro via yield
-                    // (os demais são enviados assincronamente)
-                    List<String> serialized = new ArrayList<>();
-                    for (RealtimeEventCursorService.StoredEvent event : missed) {
-                        String s = serializeOrNull(WebSocketEvent.from(
-                                event.cursor(), event.data(), objectMapper));
-                        if (s != null) {
-                            serialized.add(s);
-                        }
-                    }
-
-                    if (serialized.isEmpty()) {
-                        yield null;
-                    }
-                    // Envia eventos adicionais diretamente na conexão
-                    for (int i = 1; i < serialized.size(); i++) {
-                        String payload = serialized.get(i);
-                        try {
-                            connection.sendTextAndAwait(payload);
-                        } catch (Exception e) {
-                            LOG.debugf("Falha ao enviar evento de replay para %s", connection.id());
-                        }
-                    }
-                    yield serialized.get(0);
-                }
-                default -> {
-                    LOG.warnf("Mensagem desconhecida type=%s de %s", msg.type(), connection.id());
-                    yield null;
-                }
-                };
-
-            } catch (JsonProcessingException e) {
-                LOG.warnf("Mensagem inválida de %s", connection.id());
-                return null;
+            ConnectionState state = new ConnectionState(cursor);
+            if (sendSnapshot(connection, state, cursor, null) && connection.isOpen()) {
+                connection.userData().put(STATE, state);
+                if (!connection.isOpen()) connection.userData().remove(STATE);
             }
         }
     }
 
-    /** Loga o fechamento da conexão. */
-    @OnClose
-    public void onClose(WebSocketConnection connection) {
+    /** Envia todos os frames em ordem; nunca devolve um evento adicional ao framework. */
+    @OnTextMessage
+    @Transactional
+    public String onMessage(WebSocketConnection connection, String rawMessage) {
         try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
-            LOG.debugf("Conexão encerrada: address:%s id=%s",
-                    connection.pathParam("canonical"), connection.id());
-        }
-    }
-
-    /**
-     * Transmite um evento para todos os clientes conectados ao canal do endereço
-     * informado. Chamado por {@link OutboxWebSocketConsumer} quando um evento
-     * é publicado.
-     *
-     * @param canonical forma canônica do endereço Bitcoin
-     * @param cursor    novo cursor após o evento
-     * @param data      dados do evento a transmitir
-     */
-    public void broadcast(String canonical, String cursor, Object data) {
-        String message = serializeOrNull(WebSocketEvent.from(cursor, data, objectMapper));
-        if (message == null) return;
-
-        openConnections.stream()
-                .filter(c -> c.isOpen() && canonical.equals(c.pathParam("canonical")))
-                .forEach(c -> {
-                    try {
-                        c.sendTextAndAwait(message);
-                    } catch (Exception e) {
-                        LOG.debugf("Falha ao enviar evento para %s", c.id());
-                    }
-                });
-    }
-
-    private String serializeOrNull(Object obj) {
-        try {
-            return objectMapper.writeValueAsString(obj);
-        } catch (JsonProcessingException e) {
-            LOG.errorf(e, "Falha ao serializar mensagem WebSocket");
+            WebSocketClientMessage message;
+            try {
+                message = objectMapper.readValue(rawMessage, WebSocketClientMessage.class);
+            } catch (JsonProcessingException exception) {
+                LOG.warnf("Mensagem inválida de %s", connection.id());
+                return null;
+            }
+            if (message == null || message.type() == null) return null;
+            if ("PONG".equals(message.type())) return null;
+            if (!"RECONNECT".equals(message.type())) {
+                LOG.warnf("Mensagem desconhecida de %s", connection.id());
+                return null;
+            }
+            ConnectionState state = connection.userData().get(STATE);
+            if (state == null) return null;
+            String requested = message.cursor() == null ? "0" : message.cursor().value();
+            synchronized (state) {
+                RealtimeEventCursorService.Replay replay = cursorService.replayAfter(
+                        connection.pathParam("canonical"), requested);
+                if (replay.snapshotRequired() || replay.events().isEmpty()) {
+                    sendSnapshot(connection, state, replay.currentCursor(), requested);
+                } else {
+                    sendEvents(connection, state, replay);
+                }
+            }
             return null;
         }
+    }
+
+    /** Consulta limitada por conexão; todas as réplicas leem a mesma projeção confirmada. */
+    @Transactional
+    public void pollCommittedEvents() {
+        openConnections.stream().filter(WebSocketConnection::isOpen).forEach(connection -> {
+            ConnectionState state = connection.userData().get(STATE);
+            if (state == null) return;
+            synchronized (state) {
+                try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(connection)) {
+                    RealtimeEventCursorService.Replay replay = cursorService.replayAfter(
+                            connection.pathParam("canonical"), state.cursor);
+                    if (replay.snapshotRequired()) {
+                        sendSnapshot(connection, state, replay.currentCursor(), state.cursor);
+                    } else {
+                        sendEvents(connection, state, replay);
+                    }
+                } catch (Exception exception) {
+                    LOG.warnf("Falha temporária na leitura do canal da conexão %s", connection.id());
+                }
+            }
+        });
+    }
+
+    @OnClose
+    public void onClose(WebSocketConnection connection) {
+        connection.userData().remove(STATE);
+    }
+
+    private void sendEvents(WebSocketConnection connection, ConnectionState state,
+                            RealtimeEventCursorService.Replay replay) {
+        for (RealtimeEventCursorService.StoredEvent event : replay.events()) {
+            if (!send(connection, WebSocketEvent.from(event.cursor(), event.data(), objectMapper))) return;
+            state.cursor = event.cursor();
+        }
+    }
+
+    private boolean sendSnapshot(WebSocketConnection connection, ConnectionState state,
+                                 String cursor, String resumedFrom) {
+        String canonical = connection.pathParam("canonical");
+        AddressSnapshot data = AddressSnapshot.fromPet(canonical, PetPublicSnapshot.fromCanonical(canonical), resumedFrom);
+        if (!send(connection, new WebSocketSnapshot<>(WebSocketCursor.of(cursor), data))) return false;
+        state.cursor = cursor;
+        return true;
+    }
+
+    private boolean send(WebSocketConnection connection, Object frame) {
+        try {
+            connection.sendTextAndAwait(objectMapper.writeValueAsString(frame));
+            return true;
+        } catch (Exception exception) {
+            // Não avança o cursor: o próximo poll retoma exatamente deste ponto.
+            LOG.debugf("Falha ao enviar frame para conexão %s", connection.id());
+            return false;
+        }
+    }
+
+    private static final class ConnectionState {
+        String cursor;
+        ConnectionState(String cursor) { this.cursor = cursor; }
     }
 }

@@ -78,17 +78,15 @@ cp .env.example .env   # revise os defaults; não commite .env
 
 ### 2. Suba a stack
 
-**Stack básica** (PostgreSQL, MinIO, API, PWA, Caddy):
-
-```bash
-docker compose -f infra/docker-compose.yml up --build
-```
-
-**Stack completa** — inclui Mailpit (e-mail de captura) e Bitcoin regtest:
+**Stack local** (PostgreSQL, MinIO, API, PWA, Caddy, captura de e-mail e regtest):
 
 ```bash
 docker compose -f infra/docker-compose.yml --profile dev up --build
 ```
+
+O perfil `dev` habilita os serviços locais. Produção usa o override próprio,
+storage S3 externo e configuração explícita de proxies confiáveis conforme
+[operação TLS](docs/operacao/tls.md).
 
 ### 3. Acesse os serviços
 

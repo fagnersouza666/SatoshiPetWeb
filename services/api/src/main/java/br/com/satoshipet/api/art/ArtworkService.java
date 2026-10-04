@@ -67,6 +67,7 @@ public class ArtworkService {
 
     @Transactional
     public ArtworkInfoResponse approve(Account account, Pet pet) {
+        pet = Pet.lockForUpdate(pet.id);
         ensureCreator(account, pet);
         PetArtwork artwork = requireArtwork(pet);
         pipeline.approve(artwork, Instant.now());
@@ -75,6 +76,7 @@ public class ArtworkService {
 
     @Transactional
     public ArtworkInfoResponse regenerate(Account account, Pet pet) {
+        pet = Pet.lockForUpdate(pet.id);
         ensureCreator(account, pet);
         PetArtwork artwork = requireArtwork(pet);
         pipeline.requestVoluntaryRegeneration(artwork, Instant.now());
@@ -115,14 +117,14 @@ public class ArtworkService {
     }
 
     private static void ensureCreator(Account account, Pet pet) {
-        if (!pet.creatorAccount.id.equals(account.id)
-                || !AccountAddressBinding.isActivelyBound(account, pet.address)) {
+        if (!isCreatorBound(account, pet)) {
             throw new ArtworkOperationException("not_creator", "Apenas o criador vinculado pode gerenciar a arte");
         }
     }
 
     private static boolean isCreatorBound(Account account, Pet pet) {
-        return pet.creatorAccount.id.equals(account.id)
+        return account != null && pet.creatorAccount != null
+                && pet.creatorAccount.id.equals(account.id)
                 && AccountAddressBinding.isActivelyBound(account, pet.address);
     }
 

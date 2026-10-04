@@ -55,6 +55,11 @@ public class LoggingPetLifecyclePort implements PetLifecyclePort {
     }
 
     @Override
+    public void onArtworkApproved(UUID petId, Instant now) {
+        LOG.infof("[LoggingPetLifecycle] onArtworkApproved petId=%s", petId);
+    }
+
+    @Override
     public void tick(UUID petId, Instant now) {
         LOG.infof("[LoggingPetLifecycle] tick petId=%s now=%s", petId, now);
     }

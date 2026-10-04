@@ -17,9 +17,9 @@ import java.util.List;
 public record PublicAddressResponse(
         String address,
         String network,
-        long confirmedSats,
-        long pendingSats,
-        int transactionCount,
+        Long confirmedSats,
+        Long pendingSats,
+        long transactionCount,
         List<TransactionSummary> recentTransactions,
         String qrData,
         String explorerUrl,
@@ -31,7 +31,10 @@ public record PublicAddressResponse(
         Boolean pendingMovesEgg,
         String operationalLabel,
         String artworkVersion,
-        String atlasUrl
+        String atlasUrl,
+        boolean balanceKnown,
+        boolean balanceFresh,
+        Instant balanceCheckedAt
 ) {
     public PublicAddressResponse {
         recentTransactions = recentTransactions == null ? List.of() : List.copyOf(recentTransactions);
@@ -40,13 +43,14 @@ public record PublicAddressResponse(
     public static PublicAddressResponse of(
             String address,
             String network,
-            long confirmedSats,
-            long pendingSats,
-            int transactionCount,
+            Long confirmedSats,
+            Long pendingSats,
+            long transactionCount,
             List<TransactionSummary> recentTransactions,
             String qrData,
             String explorerUrl,
-            PetPublicSnapshot pet
+            PetPublicSnapshot pet,
+            AddressMonitorState state
     ) {
         PetPublicSnapshot snapshot = pet == null ? PetPublicSnapshot.empty() : pet;
         return new PublicAddressResponse(
@@ -66,7 +70,10 @@ public record PublicAddressResponse(
                 snapshot.pendingMovesEgg(),
                 snapshot.operationalLabel(),
                 snapshot.artworkVersion(),
-                snapshot.atlasUrl()
+                snapshot.atlasUrl(),
+                confirmedSats != null,
+                state != null && state.isFresh(Instant.now()),
+                state == null ? null : state.balanceCheckedAt
         );
     }
 

@@ -42,9 +42,9 @@ public class Pet extends PanacheEntityBase {
     @JoinColumn(name = "address_id", nullable = false, updatable = false)
     public Address address;
 
-    /** Conta que criou o pet. */
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "creator_account_id", nullable = false, updatable = false)
+    /** Conta que criou o pet; desassociada quando seus dados privados são excluídos. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "creator_account_id")
     public Account creatorAccount;
 
     /** Nome do pet escolhido pelo usuário. */
@@ -100,6 +100,10 @@ public class Pet extends PanacheEntityBase {
     @Column(name = "zero_balance_since")
     public Instant zeroBalanceSince;
 
+    /** Perda da última alimentação válida aguardando confirmação de saldo líquido. */
+    @Column(name = "birth_foundation_lost", nullable = false)
+    public boolean birthFoundationLost;
+
     /** Sem porção de referência ainda (aguardando plano do criador). */
     @Column(name = "awaiting_reference", nullable = false)
     public boolean awaitingReference;
@@ -145,5 +149,22 @@ public class Pet extends PanacheEntityBase {
     /** Localiza o pet pelo endereço Bitcoin (no máximo um). */
     public static Optional<Pet> findByAddress(Address address) {
         return find("address", address).firstResultOptional();
+    }
+
+    /**
+     * Entrada comum de escritores: chamar antes de modificar o pet.
+     * Recarrega uma entidade previamente lida somente na primeira aquisição;
+     * chamadas aninhadas conservam alterações da transação que já detém a trava.
+     */
+    public static Pet lockForUpdate(UUID petId) {
+        Objects.requireNonNull(petId, "petId");
+        Pet pet = findById(petId);
+        if (pet == null) throw new IllegalArgumentException("Pet não encontrado: " + petId);
+        if (getEntityManager().getLockMode(pet) != jakarta.persistence.LockModeType.PESSIMISTIC_WRITE) {
+            // Materializa novos pets/vínculos da própria transação antes do SELECT FOR UPDATE.
+            getEntityManager().flush();
+            getEntityManager().refresh(pet, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        }
+        return pet;
     }
 }

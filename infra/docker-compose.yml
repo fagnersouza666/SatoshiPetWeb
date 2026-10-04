@@ -4,7 +4,7 @@
 # serviço diretamente no host (ADR-002).
 #
 # Uso básico:
-#   docker compose -f infra/docker-compose.yml up --build
+#   docker compose -f infra/docker-compose.yml --profile dev up --build
 #
 # Variáveis de ambiente: copie .env.example para .env na raiz do repositório.
 # Cada variável tem um default seguro para dev local.
@@ -62,6 +62,9 @@ services:
     environment:
       QUARKUS_HTTP_HOST: "0.0.0.0"
       QUARKUS_HTTP_PORT: "8080"
+      # Somente os proxies da stack podem informar a identidade do cliente.
+      QUARKUS_HTTP_PROXY_TRUSTED_PROXIES: "${QUARKUS_HTTP_PROXY_TRUSTED_PROXIES:-caddy,pwa}"
+      SESSION_COOKIE_SECURE: "false"
       # Origens adicionais autorizadas quando a API é acessada diretamente.
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:4200,https://localhost}"
       # Banco de dados
@@ -82,6 +85,7 @@ services:
       QUARKUS_MAILER_START_TLS: "DISABLED"
       # Magic link TTL (formato ISO-8601, ex.: PT15M)
       MAGIC_LINK_TTL: "${MAGIC_LINK_TTL:-PT15M}"
+      MAGIC_LINK_BASE_URL: "${MAGIC_LINK_BASE_URL:-http://localhost:4200}"
       # Bitcoin regtest (profile dev); em produção aponta para Esplora mainnet
       BITCOIN_RPC_URL: "http://${BITCOIN_RPC_USER:-bitcoin}:${BITCOIN_RPC_PASSWORD:-bitcoin_dev}@bitcoind:18443"
       BITCOIN_NETWORK: "regtest"
@@ -103,7 +107,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -118,6 +122,7 @@ services:
   # Console: http://localhost:9001  (usuário: minioadmin / minioadmin_dev)
   # ---------------------------------------------------------------------------
   minio:
+    profiles: [dev]
     image: minio/minio:RELEASE.2025-06-13T11-33-47Z
     container_name: satoshi-minio
     command: server /data --console-address ":9001"
@@ -142,6 +147,7 @@ services:
   # Roda uma vez e sai; não interfere com o MinIO principal
   # ---------------------------------------------------------------------------
   minio-init:
+    profiles: [dev]
     container_name: satoshi-minio-init
     depends_on:
       minio:
@@ -164,6 +170,7 @@ services:
   # SMTP: localhost:1025 (sem autenticação, sem TLS)
   # ---------------------------------------------------------------------------
   mailpit:
+    profiles: [dev]
     image: axllent/mailpit:v1.21
     container_name: satoshi-mailpit
     ports:
@@ -180,6 +187,7 @@ services:
   # NUNCA usar Mainnet ou enviar fundos reais para validar software (PRD §16.4).
   # ---------------------------------------------------------------------------
   bitcoind:
+    profiles: [dev]
     image: bitcoin/bitcoin:29.0
     container_name: satoshi-bitcoind
     command:

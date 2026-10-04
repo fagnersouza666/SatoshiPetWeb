@@ -21,6 +21,15 @@ import java.util.List;
 @Produces(MediaType.APPLICATION_JSON)
 public interface EsploraClient {
 
+    @GET
+    @Path("/tx/{txid}")
+    EsploraTx getTransaction(@PathParam("txid") String txid);
+
+    @GET
+    @Path("/tx/{txid}/outspend/{vout}")
+    br.com.satoshipet.api.btc.esplora.EsploraOutspend getOutspend(
+            @PathParam("txid") String txid, @PathParam("vout") int vout);
+
     /** Retorna estatísticas de saldo de um endereço. */
     @GET
     @Path("/address/{address}")

@@ -140,8 +140,8 @@ class PetEngineTest {
         assertEquals(PORTION_SATS, feeding.portionSats);
         assertEquals(FIVE_THOUSAND, feeding.amountSats);
         assertEquals(0, feeding.durationHours.compareTo(SIX_HOURS));
-        assertEquals(0, pet.reserveHours.compareTo(SIX_HOURS),
-                "confirmação da criatura não pode recalcular com a nova porção");
+        assertEquals(0, pet.reserveHours.compareTo(new BigDecimal("5.9994444445")),
+                "confirmação preserva a porção original e consome apenas os dois segundos decorridos");
     }
 
     @Test
@@ -254,6 +254,37 @@ class PetEngineTest {
                 "invalidar o estouro não pode desfazer as horas já capadas (CA-016)");
         assertEquals(FeedingStatus.INVALIDATED,
                 PetFeeding.findByPetAndReceipt(pet, receiptB).orElseThrow().status);
+    }
+
+    @Test
+    @Transactional
+    void invalidarCreditoAnteriorAoTetoReaplicaRecebimentoQueFoiCapado() {
+        Fixture fixture = persistCreatureWithPortion("replay-cap");
+        UUID receiptA = persistReceipt(fixture, 140_000L);
+        UUID receiptB = persistReceipt(fixture, PORTION_SATS);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptA, 140_000L, true, NOW);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptB, PORTION_SATS, true, NOW);
+
+        lifecycle.onReceiptInvalidated(fixture.pet.id, receiptA, NOW);
+
+        assertEquals(0, fixture.pet.reserveHours.compareTo(hours("24")));
+        assertEquals(0, PetFeeding.findByPetAndReceipt(fixture.pet, receiptB).orElseThrow()
+                .durationHours.compareTo(hours("0")), "snapshot original do teto permanece imutável");
+    }
+
+    @Test
+    @Transactional
+    void invalidarRecebimentoJaConsumidoNaoDescontaRecebimentoPosterior() {
+        Fixture fixture = persistCreatureWithPortion("replay-consumed");
+        UUID receiptA = persistReceipt(fixture, PORTION_SATS);
+        UUID receiptB = persistReceipt(fixture, PORTION_SATS);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptA, PORTION_SATS, true, NOW);
+        Instant nextDay = NOW.plus(Duration.ofHours(48));
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptB, PORTION_SATS, true, nextDay);
+
+        lifecycle.onReceiptInvalidated(fixture.pet.id, receiptA, nextDay);
+
+        assertEquals(0, fixture.pet.reserveHours.compareTo(hours("24")));
     }
 
     @Test
@@ -388,6 +419,70 @@ class PetEngineTest {
         List<PetFeeding> feedings = PetFeeding.listByPet(pet);
         assertEquals(1, feedings.size());
         return feedings.get(0);
+    }
+
+    @Test
+    @Transactional
+    void replayUsaInstanteDaConfirmacaoQuandoPendenteNoOvoNaoEraElegivel() {
+        Fixture fixture = persistPet("egg-credit-time", PetPresentation.EGG, true);
+        UUID receiptA = persistReceipt(fixture, FIVE_THOUSAND);
+        UUID receiptB = persistReceipt(fixture, PORTION_SATS);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptA, FIVE_THOUSAND, true, NOW);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptB, PORTION_SATS, false, NOW);
+        Instant confirmedAt = NOW.plus(Duration.ofHours(48));
+        lifecycle.onReceiptConfirmed(fixture.pet.id, receiptB, PORTION_SATS, confirmedAt);
+
+        lifecycle.onReceiptInvalidated(fixture.pet.id, receiptA, confirmedAt);
+
+        assertEquals(0, fixture.pet.reserveHours.compareTo(hours("24")));
+    }
+
+    @Test
+    @Transactional
+    void reconstrucaoPreservaPorcaoCongeladaERecalculaCreditoCapado() {
+        Fixture fixture = persistCreatureWithPortion("reconstruction-cap");
+        UUID receiptA = persistReceipt(fixture, 140_000L);
+        UUID receiptB = persistReceipt(fixture, PORTION_SATS);
+        LogicalReceipt a = LogicalReceipt.findById(receiptA);
+        a.confirmedSats = 140_000L; a.pendingSats = 0L;
+        LogicalReceipt b = LogicalReceipt.findById(receiptB);
+        b.confirmedSats = PORTION_SATS; b.pendingSats = 0L;
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptA, 140_000L, true, NOW);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptB, PORTION_SATS, true, NOW);
+        lifecycle.onReceiptInvalidated(fixture.pet.id, receiptA, NOW);
+
+        lifecycle.reconstruct(fixture.pet.id, NOW);
+
+        assertEquals(0, fixture.pet.reserveHours.compareTo(hours("24")));
+    }
+
+    @Test
+    @Transactional
+    void revisaoPreservaSnapshotOriginalMesmoDepoisDeRecarregar() {
+        Fixture fixture = persistCreatureWithPortion("snapshot-revision");
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, false, NOW);
+        lifecycle.onReceiptRevised(fixture.pet.id, receiptId, 10_000L, NOW.plusSeconds(10));
+        Pet.getEntityManager().flush();
+        Pet.getEntityManager().clear();
+        PetFeeding feeding = PetFeeding.findByPetAndReceipt(Pet.findById(fixture.pet.id), receiptId).orElseThrow();
+        assertEquals(FIVE_THOUSAND, feeding.initialAmountSats);
+        assertEquals(PORTION_SATS, feeding.initialPortionSats);
+        assertEquals(0, feeding.initialDurationHours.compareTo(SIX_HOURS));
+        assertEquals(10_000L, feeding.amountSats);
+    }
+
+    @Test
+    @Transactional
+    void revisaoEReorgSimultaneosAtualizamStatusEValor() {
+        Fixture fixture = persistCreatureWithPortion("reorg-amount");
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, true, NOW);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, 10_000L, false, NOW);
+        PetFeeding feeding = singleFeeding(fixture.pet);
+        assertEquals(FeedingStatus.PROVISIONAL, feeding.status);
+        assertEquals(10_000L, feeding.amountSats);
+        assertEquals(0, fixture.pet.reserveHours.compareTo(TWELVE_HOURS));
     }
 
     private static BigDecimal hours(String value) {

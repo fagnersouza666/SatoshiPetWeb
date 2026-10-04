@@ -46,14 +46,15 @@ class AccountAddressChangeServiceTest {
         Optional<AccountAddressBinding> ativo = AccountAddressBinding.findActivePrimary(account);
         org.junit.jupiter.api.Assertions.assertTrue(ativo.isPresent());
         assertEquals(MAINNET_ADDRESS_B, ativo.get().address.canonical);
+        assertNotNull(br.com.satoshipet.api.pet.Pet.findByAddress(novo).orElse(null),
+                "A troca para um endereço novo deve criar seu pet na mesma transação");
     }
 
     @Test
     @Transactional
     void rejeitaTrocaForaDaJanela72h() {
-        Account account = criarConta();
         Instant now = Instant.now();
-        account.addressChangeDeadline = now.minus(Duration.ofSeconds(1)); // já expirou
+        Account account = criarContaComDeadline(now.minusSeconds(1));
 
         AccountAddressChangeService.AddressChangeException ex = assertThrows(
                 AccountAddressChangeService.AddressChangeException.class,
@@ -78,8 +79,7 @@ class AccountAddressChangeServiceTest {
     @Test
     @Transactional
     void rejeitaQuandoDeadlineNulo() {
-        Account account = criarConta();
-        account.addressChangeDeadline = null; // sem deadline
+        Account account = criarContaComDeadline(null);
 
         AccountAddressChangeService.AddressChangeException ex = assertThrows(
                 AccountAddressChangeService.AddressChangeException.class,
@@ -89,10 +89,15 @@ class AccountAddressChangeServiceTest {
     }
 
     private Account criarConta() {
+        return criarContaComDeadline(Instant.now().plus(Duration.ofHours(72)));
+    }
+
+    private Account criarContaComDeadline(Instant deadline) {
         Account account = Account.create(
                 "addr-change-" + UUID.randomUUID() + "@test.com",
                 "America/Sao_Paulo", "pt-BR", Instant.now()
         );
+        account.addressChangeDeadline = deadline;
         account.persist();
         return account;
     }

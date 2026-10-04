@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthService } from '../../../core/auth.service';
 
@@ -21,7 +21,11 @@ import { AuthService } from '../../../core/auth.service';
     <section class="page" aria-labelledby="recuperar-titulo">
       <h1 id="recuperar-titulo" class="page__title">Recuperar acesso</h1>
       <p class="page__sub">
-        Informe seu código de recuperação para entrar na conta e revogar os acessos anteriores.
+        @if (verificationToken) {
+          Confirme seu código de recuperação para concluir a troca de e-mail.
+        } @else {
+          Informe seu código de recuperação e o novo e-mail ao qual você tem acesso.
+        }
       </p>
 
       @if (sucesso()) {
@@ -36,8 +40,28 @@ import { AuthService } from '../../../core/auth.service';
           >
             <path fill="currentColor" d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
           </svg>
-          <span>Acesso recuperado. Abrindo sua conta.</span>
+          <span>Acesso recuperado. Guarde o novo código abaixo; o anterior foi invalidado.</span>
         </div>
+      }
+
+      @if (newRecoveryCode()) {
+        <pre class="form-input form-input--mono" aria-label="Novo código de recuperação">{{
+          newRecoveryCode()
+        }}</pre>
+        <button
+          type="button"
+          class="btn btn--primary"
+          [disabled]="carregando()"
+          (click)="abrirConta()"
+        >
+          Guardei meu novo código; abrir conta
+        </button>
+      }
+      @if (emailSent()) {
+        <p role="status">
+          Verifique seu novo e-mail e abra o link recebido. Você precisará informar o código de
+          recuperação novamente.
+        </p>
       }
 
       @if (erro()) {
@@ -77,6 +101,23 @@ import { AuthService } from '../../../core/auth.service';
             }
           </div>
 
+          @if (!verificationToken) {
+            <div class="form-group">
+              <label class="form-label" for="recoveryEmail">Novo e-mail</label>
+              <input
+                id="recoveryEmail"
+                type="email"
+                formControlName="email"
+                class="form-input"
+                autocomplete="email"
+                aria-required="true"
+              />
+              @if (form.controls.email.invalid && form.controls.email.touched) {
+                <span class="field-error" role="alert">Informe um e-mail válido.</span>
+              }
+            </div>
+          }
+
           <button
             type="submit"
             class="btn btn--primary"
@@ -87,7 +128,7 @@ import { AuthService } from '../../../core/auth.service';
               <span class="btn__spinner" aria-hidden="true"></span>
               Verificando…
             } @else {
-              Recuperar acesso
+              {{ verificationToken ? 'Confirmar recuperação' : 'Verificar novo e-mail' }}
             }
           </button>
         </form>
@@ -266,14 +307,42 @@ import { AuthService } from '../../../core/auth.service';
 export class RecuperarComponent {
   private readonly auth = inject(AuthService);
   private readonly fb = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  protected readonly verificationToken = this.route.snapshot.queryParamMap.get('token');
+  protected readonly newRecoveryCode = signal<string | null>(null);
+  protected readonly emailSent = signal(false);
 
   protected readonly carregando = signal(false);
   protected readonly sucesso = signal(false);
   protected readonly erro = signal<string | null>(null);
 
   protected readonly form = this.fb.group({
-    recoveryCode: ['', [Validators.required, Validators.minLength(1)]],
+    recoveryCode: ['', [Validators.required, Validators.pattern(/\S/)]],
+    email: ['', this.verificationToken ? [] : [Validators.required, Validators.email]],
   });
+
+  constructor() {
+    if (this.verificationToken) {
+      void this.router.navigate([], { queryParams: {}, replaceUrl: true });
+    }
+  }
+
+  protected async abrirConta(): Promise<void> {
+    if (this.carregando() || !this.newRecoveryCode()) return;
+    this.carregando.set(true);
+    this.erro.set(null);
+    try {
+      await this.auth.openRecoveredAccount();
+      this.newRecoveryCode.set(null);
+    } catch {
+      this.erro.set(
+        'Não foi possível abrir a conta. Seu novo código continua válido; tente novamente.',
+      );
+    } finally {
+      this.carregando.set(false);
+    }
+  }
 
   protected get codigoInvalido(): boolean {
     const ctrl = this.form.get('recoveryCode');
@@ -290,12 +359,19 @@ export class RecuperarComponent {
     this.erro.set(null);
 
     try {
-      await this.auth.recoverAndNavigate(recoveryCode);
-      this.sucesso.set(true);
+      if (this.verificationToken) {
+        const newCode = await this.auth.recoverAccess(recoveryCode, this.verificationToken);
+        this.newRecoveryCode.set(newCode);
+        this.form.reset();
+        this.sucesso.set(true);
+      } else {
+        await this.auth.requestRecoveryEmail(recoveryCode, this.form.value.email!.trim());
+        this.emailSent.set(true);
+      }
     } catch (error) {
       this.erro.set(
         error instanceof HttpErrorResponse && (error.status === 400 || error.status === 401)
-          ? 'Código inválido ou já utilizado. Verifique o código e tente novamente.'
+          ? 'Código ou link inválido, expirado ou já utilizado. Confira os dados e tente novamente.'
           : 'Não foi possível concluir o acesso agora. Tente novamente.',
       );
     } finally {

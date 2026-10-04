@@ -1,6 +1,7 @@
 package br.com.satoshipet.api.auth;
 
 import br.com.satoshipet.api.account.SessionService;
+import br.com.satoshipet.api.account.SessionCookieFactory;
 import br.com.satoshipet.api.platform.AuthenticatedSession;
 import br.com.satoshipet.api.platform.SessionAuthFilter;
 import jakarta.inject.Inject;
@@ -37,6 +38,9 @@ public class LogoutResource {
     @Inject
     SessionService sessionService;
 
+    @Inject
+    SessionCookieFactory cookies;
+
     /**
      * Revoga a sessão atual.
      *
@@ -59,12 +63,7 @@ public class LogoutResource {
         LOG.infof("Logout realizado para account=%s", authenticatedSession.get().account.id);
 
         // Expira o cookie no cliente
-        NewCookie expiredCookie = new NewCookie.Builder(SessionAuthFilter.SESSION_COOKIE)
-                .value("")
-                .path("/")
-                .httpOnly(true)
-                .maxAge(0)
-                .build();
+        NewCookie expiredCookie = cookies.expire();
 
         return Response.noContent()
                 .cookie(expiredCookie)

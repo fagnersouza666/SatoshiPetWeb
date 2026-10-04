@@ -50,6 +50,9 @@ public final class ReserveClock {
         Objects.requireNonNull(now, "now");
 
         BigDecimal clampedReserve = reserveHours.max(BigDecimal.ZERO).setScale(ReserveMath.SCALE, ROUNDING);
+        if (now.isBefore(lastEvaluatedAt)) {
+            return new Consumption(clampedReserve, depletedAt, lastEvaluatedAt);
+        }
         BigDecimal elapsedHours = elapsedHours(lastEvaluatedAt, now);
         BigDecimal remaining = clampedReserve.subtract(elapsedHours);
 

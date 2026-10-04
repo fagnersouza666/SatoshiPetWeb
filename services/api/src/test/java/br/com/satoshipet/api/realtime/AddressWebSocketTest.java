@@ -1,6 +1,11 @@
 package br.com.satoshipet.api.realtime;
 
 import br.com.satoshipet.api.support.bitcoin.BitcoinTestAddresses;
+import br.com.satoshipet.api.outbox.OutboxEvent;
+import br.com.satoshipet.api.outbox.OutboxWebSocketConsumer;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.quarkus.narayana.jta.QuarkusTransaction;
+import jakarta.inject.Inject;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
@@ -19,6 +24,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AddressWebSocketTest {
 
     private static final String TEST_ADDRESS = BitcoinTestAddresses.REGTEST_BECH32;
+
+    @Inject RealtimeEventCursorService cursorService;
+    @Inject OutboxWebSocketConsumer consumer;
+    @Inject ObjectMapper mapper;
 
     @TestHTTPResource("/")
     URI baseUri;
@@ -73,7 +82,7 @@ class AddressWebSocketTest {
     @Test
     void recebeSnapshotAoReconectarComCursor() throws Exception {
         // Canal isolado: o endereço compartilhado dos outros testes pode ter
-        // eventos PET_/BITCOIN_ no ring buffer, e o replay devolve EVENT.
+        // eventos PET_/BITCOIN_ na projeção durável, e o replay devolve EVENT.
         URI webSocketUri = wsUriForAddress("bcrt1qreconnect" + java.util.UUID.randomUUID()
                 .toString().replace("-", "").substring(0, 20));
 
@@ -124,10 +133,56 @@ class AddressWebSocketTest {
         assertNotNull(snapshot);
         assertTrue(snapshot.contains("\"type\":\"SNAPSHOT\""),
                 "Reconexão deve retornar SNAPSHOT, recebido: " + snapshot);
-        assertTrue(snapshot.contains("\"cursor\":\"42\""),
-                "Snapshot deve refletir o cursor enviado: " + snapshot);
+        assertTrue(snapshot.contains("\"cursor\":\"0\""),
+                "Snapshot deve usar o cursor atual do servidor: " + snapshot);
         assertTrue(!snapshot.contains("HIBERNANDO"),
                 "Reconexão não pode mentir HIBERNANDO: " + snapshot);
+    }
+
+    @Test
+    void replayRealEntregaTresFramesEmOrdemSemFrameAdicional() throws Exception {
+        String canonical = "bcrt1qreplay" + java.util.UUID.randomUUID().toString().replace("-", "");
+        java.util.List<String> expected = QuarkusTransaction.requiringNew().call(() -> {
+            java.util.List<String> cursors = new java.util.ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                OutboxEvent event = OutboxEvent.create("Address", canonical, "PET_STATE_CHANGED",
+                        "{\"address\":\"" + canonical + "\",\"eventType\":\"PET_STATE_CHANGED\"}", java.time.Instant.now(), null);
+                event.persistAndFlush();
+                consumer.consume(event);
+                cursors.add(cursorService.currentCursor(canonical));
+            }
+            return cursors;
+        });
+        java.util.concurrent.LinkedBlockingQueue<String> messages = new java.util.concurrent.LinkedBlockingQueue<>();
+        WebSocket ws = HttpClient.newHttpClient().newWebSocketBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .buildAsync(wsUriForAddress(canonical), new WebSocket.Listener() {
+                    final StringBuilder buffer = new StringBuilder();
+                    @Override
+                    public java.util.concurrent.CompletionStage<?> onText(WebSocket socket, CharSequence text, boolean last) {
+                        buffer.append(text);
+                        if (last) { messages.add(buffer.toString()); buffer.setLength(0); }
+                        socket.request(1);
+                        return null;
+                    }
+                }).get(5, TimeUnit.SECONDS);
+        try {
+            String initial = messages.poll(5, TimeUnit.SECONDS);
+            org.junit.jupiter.api.Assertions.assertNotNull(initial);
+            org.junit.jupiter.api.Assertions.assertEquals("SNAPSHOT", mapper.readTree(initial).path("type").asText());
+            ws.sendText("{\"type\":\"RECONNECT\",\"cursor\":\"0\"}", true).join();
+            java.util.List<String> actual = new java.util.ArrayList<>();
+            for (int i = 0; i < 3; i++) {
+                String message = messages.poll(5, TimeUnit.SECONDS);
+                org.junit.jupiter.api.Assertions.assertNotNull(message);
+                org.junit.jupiter.api.Assertions.assertEquals("EVENT", mapper.readTree(message).path("type").asText());
+                actual.add(mapper.readTree(message).path("cursor").asText());
+            }
+            org.junit.jupiter.api.Assertions.assertEquals(expected, actual);
+            org.junit.jupiter.api.Assertions.assertNull(messages.poll(100, TimeUnit.MILLISECONDS));
+        } finally {
+            ws.sendClose(WebSocket.NORMAL_CLOSURE, "").join();
+        }
     }
 
     private URI wsUriForAddress(String address) throws Exception {

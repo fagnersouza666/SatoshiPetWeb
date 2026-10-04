@@ -31,3 +31,15 @@ As propriedades podem ser alteradas por ambiente:
 O contador é local ao processo. Em uma implantação com múltiplas réplicas, a
 política deve ser mantida em um armazenamento compartilhado antes de se
 considerar o limite global.
+
+## Retenção e identidade
+
+Contadores em memória são removidos ao expirar a janela, sob o mesmo lock do
+consumo. Há limite de 10.000 identidades por instância, configurável em
+`satoshi-pet.rate-limit.max-identities`. Quando a capacidade está cheia, novas
+identidades recebem 429 até a próxima janela; identidades ativas não são expulsas
+para permitir contornar sua quota. O limite continua local por réplica.
+
+A chave de IP usa somente `HttpServerRequest.remoteAddress()`, já resolvido pelo
+Quarkus conforme `trusted-proxies`; o filtro não confia em X-Forwarded-For bruto.
+O mesmo endereço é usado na auditoria de novas sessões.

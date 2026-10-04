@@ -68,3 +68,17 @@ test('não inclui previews privados nem URLs diretas do storage no grupo públic
   }
   assert.equal(config.assetGroups.some((group) => group.name === 'pet-artwork'), false);
 });
+
+
+test('nenhuma resposta de identidade ou conta privada recebe fallback do SW', () => {
+  for (const url of [
+    'https://satoshi.pet/api/v1/account/me',
+    'https://satoshi.pet/api/v1/account/pet',
+    'https://satoshi.pet/api/v1/account/pet/artwork/preview/atlas.png',
+    'https://satoshi.pet/api/v1/auth/session',
+  ]) {
+    assert.equal(manifest.dataGroups.some(group => matches(group, url)), false, url);
+  }
+  assert.equal(manifest.dataGroups.find(group => matches(group,
+    'https://satoshi.pet/api/v1/public/addresses/bc1example'))?.name, 'api-freshness');
+});

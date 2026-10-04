@@ -1,7 +1,7 @@
 # Override de produção — Satoshi Pet Web
 #
 # Sobrepõe docker-compose.yml para implantação em produção.
-# Serviços de desenvolvimento (mailpit, bitcoind, minio-init) não sobem porque
+# Serviços de desenvolvimento (mailpit, bitcoind, minio, minio-init) não sobem porque
 # têm profile "dev" e esse profile não é ativado aqui.
 #
 # Uso:
@@ -19,9 +19,10 @@
 #   IMAGE_REGISTRY   — prefixo do registry (ex.: ghcr.io/seu-org)
 #   DOMAIN           — domínio público (ex.: satoshi-pet.example.com)
 #   POSTGRES_PASSWORD
-#   MINIO_ROOT_PASSWORD
 #   MAIL_HOST, MAIL_PORT, MAIL_USER, MAIL_PASSWORD
-#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (se usar S3 real)
+#   QUARKUS_HTTP_PROXY_TRUSTED_PROXIES — IP, CIDR ou nome DNS do proxy confiável
+#   OBJECT_STORAGE_ENDPOINT, OBJECT_STORAGE_BUCKET, OBJECT_STORAGE_STAGING_BUCKET
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY — credenciais do storage S3-compatível
 #
 # As imagens são construídas e publicadas pelo pipeline de CI.
 # Nunca use "latest" em produção — sempre especifique APP_VERSION.
@@ -45,9 +46,15 @@ services:
     build: !reset null
     restart: unless-stopped
     ports: !reset []
+    depends_on: !override
+      postgres:
+        condition: service_healthy
     environment:
       # Obrigatório em produção; nunca herdar o padrão de localhost do dev.
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:?variável CORS_ALLOWED_ORIGINS obrigatória em produção}"
+      QUARKUS_HTTP_PROXY_TRUSTED_PROXIES: "${QUARKUS_HTTP_PROXY_TRUSTED_PROXIES:?configure o proxy confiável}"
+      MAGIC_LINK_BASE_URL: "https://${DOMAIN:?variável DOMAIN obrigatória em produção}"
+      SESSION_COOKIE_SECURE: "true"
       # Substitui as configurações de dev pelo provedor de e-mail real
       QUARKUS_MAILER_HOST: "${MAIL_HOST:?variável MAIL_HOST obrigatória em produção}"
       QUARKUS_MAILER_PORT: "${MAIL_PORT:-587}"
@@ -55,11 +62,12 @@ services:
       QUARKUS_MAILER_USERNAME: "${MAIL_USER:?variável MAIL_USER obrigatória em produção}"
       QUARKUS_MAILER_PASSWORD: "${MAIL_PASSWORD:?variável MAIL_PASSWORD obrigatória em produção}"
       QUARKUS_MAILER_START_TLS: "REQUIRED"
-      # S3 real (remove o override de endpoint do MinIO local)
-      QUARKUS_S3_ENDPOINT_OVERRIDE: ""
-      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:?variável AWS_ACCESS_KEY_ID obrigatória em produção}"
-      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:?variável AWS_SECRET_ACCESS_KEY obrigatória em produção}"
-      QUARKUS_S3_AWS_REGION: "${AWS_REGION:-sa-east-1}"
+      # O adaptador MinioObjectStorage usa MINIO_* para qualquer provedor S3.
+      MINIO_ENDPOINT: "${OBJECT_STORAGE_ENDPOINT:?informe endpoint S3 HTTPS}"
+      MINIO_ACCESS_KEY: "${AWS_ACCESS_KEY_ID:?informe access key do storage}"
+      MINIO_SECRET_KEY: "${AWS_SECRET_ACCESS_KEY:?informe secret key do storage}"
+      MINIO_BUCKET: "${OBJECT_STORAGE_BUCKET:?informe bucket aprovado}"
+      MINIO_STAGING_BUCKET: "${OBJECT_STORAGE_STAGING_BUCKET:?informe bucket staging}"
       # Bitcoin — Esplora Mainnet (sem RPC local)
       BITCOIN_RPC_URL: ""
       BITCOIN_NETWORK: "mainnet"
@@ -86,14 +94,14 @@ services:
           memory: 512M
 
   # ---------------------------------------------------------------------------
-  # MinIO — sem porta exposta; console desabilitado em produção
-  # Em produção, considere substituir por AWS S3, Cloudflare R2 ou outro S3-compatível.
+  # MinIO local só pertence ao perfil dev; produção usa storage externo.
+  # Mesmo com --profile dev acidental, este override não publica suas portas.
   # ---------------------------------------------------------------------------
   minio:
     restart: unless-stopped
     ports: !reset []
     environment:
-      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?variável MINIO_ROOT_PASSWORD obrigatória em produção}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:-minioadmin_dev}"
     command: server /data
     deploy:
       resources:

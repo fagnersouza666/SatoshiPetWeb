@@ -8,12 +8,14 @@ import br.com.satoshipet.api.art.generation.ImageGenerationPort;
 import br.com.satoshipet.api.outbox.OutboxService;
 import br.com.satoshipet.api.pet.ArtworkStatus;
 import br.com.satoshipet.api.pet.Pet;
-import br.com.satoshipet.api.pet.PetPresentation;
+import br.com.satoshipet.api.pet.PetLifecyclePort;
 import br.com.satoshipet.api.storage.ObjectStoragePort;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
 
@@ -24,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 /**
  * Pipeline assíncrono de geração, validação e persistência de sprites (ART-02..04).
@@ -42,6 +45,7 @@ public class ArtworkPipeline {
     private final ArtworkContextBuilder contextBuilder;
     private final OutboxService outboxService;
     private final ObjectMapper objectMapper;
+    private final PetLifecyclePort petLifecycle;
     private final GenerationRequest.StubMode stubMode;
 
     @Inject
@@ -53,10 +57,11 @@ public class ArtworkPipeline {
             ObjectStoragePort storage,
             ArtworkContextBuilder contextBuilder,
             OutboxService outboxService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            PetLifecyclePort petLifecycle
     ) {
         this(imageGeneration, guardrails, validator, packager, storage, contextBuilder,
-                outboxService, objectMapper, GenerationRequest.StubMode.NORMAL);
+                outboxService, objectMapper, petLifecycle, GenerationRequest.StubMode.NORMAL);
     }
 
     ArtworkPipeline(
@@ -68,6 +73,7 @@ public class ArtworkPipeline {
             ArtworkContextBuilder contextBuilder,
             OutboxService outboxService,
             ObjectMapper objectMapper,
+            PetLifecyclePort petLifecycle,
             GenerationRequest.StubMode stubMode
     ) {
         this.imageGeneration = imageGeneration;
@@ -78,12 +84,14 @@ public class ArtworkPipeline {
         this.contextBuilder = contextBuilder;
         this.outboxService = outboxService;
         this.objectMapper = objectMapper;
+        this.petLifecycle = petLifecycle;
         this.stubMode = stubMode;
     }
 
     @Transactional
     public void enqueueInitial(Pet pet, Instant now) {
         Objects.requireNonNull(pet, "pet");
+        pet = Pet.lockForUpdate(pet.id);
         if (PetArtwork.findByPet(pet).isPresent()) {
             return;
         }
@@ -94,22 +102,51 @@ public class ArtworkPipeline {
         LOG.infof("generation_started pet=%s artwork=%s", pet.id, artwork.id);
     }
 
-    @Transactional
     public void processReadyWorkloads(Instant now) {
-        List<PetArtwork> pending = PetArtwork.list(
-                "generationStatus = ?1 OR (generationStatus = ?2 AND nextRetryAt <= ?3)",
-                ArtGenerationStatus.GENERATING,
-                ArtGenerationStatus.RETRY_WAIT,
-                now
-        );
-        for (PetArtwork artwork : pending) {
-            runGeneration(artwork, resolveReason(artwork), now);
+        processReadyWorkloads(now, work -> {
+            QuarkusTransaction.requiringNew().run(work);
+            return true;
+        });
+    }
+
+    /** O executor inicia a transação por arte e pode interromper ao perder a concessão. */
+    public void processReadyWorkloads(Instant now, Predicate<Runnable> executeOwned) {
+        List<UUID> candidates = QuarkusTransaction.requiringNew().call(() ->
+                PetArtwork.<PetArtwork>list(
+                        "generationStatus = ?1 OR (generationStatus = ?2 AND nextRetryAt <= ?3)"
+                                + " OR generationStatus = ?4 ORDER BY pet.id",
+                        ArtGenerationStatus.GENERATING, ArtGenerationStatus.RETRY_WAIT, now,
+                        ArtGenerationStatus.AWAITING_APPROVAL)
+                        .stream().map(artwork -> artwork.id).toList());
+        for (UUID artworkId : candidates) {
+            try {
+                boolean executed = executeOwned.test(() -> {
+                    PetArtwork candidate = PetArtwork.findById(artworkId);
+                    if (candidate == null) return;
+                    PetArtwork artwork = lockArtwork(candidate);
+                    if (artwork.generationStatus == ArtGenerationStatus.AWAITING_APPROVAL) {
+                        if (shouldAutoApprove(artwork.pet)) approveLocked(artwork, now);
+                    } else if (readyToGenerate(artwork, now)) {
+                        runGenerationLocked(artwork, resolveReason(artwork), now);
+                    }
+                });
+                if (!executed) break;
+            } catch (RuntimeException e) {
+                // Uma falha de persistência/storage não reverte os outros pets.
+                LOG.errorf(e, "Falha ao processar geração artwork=%s", artworkId);
+            }
         }
     }
 
     @Transactional
     public void runGeneration(PetArtwork artwork, ArtAttemptReason reason, Instant now) {
         Objects.requireNonNull(artwork, "artwork");
+        artwork = lockArtwork(artwork);
+        if (!readyToGenerate(artwork, now)) return;
+        runGenerationLocked(artwork, reason, now);
+    }
+
+    private void runGenerationLocked(PetArtwork artwork, ArtAttemptReason reason, Instant now) {
         Pet pet = artwork.pet;
         artwork.generationStatus = ArtGenerationStatus.GENERATING;
         artwork.nextRetryAt = null;
@@ -164,9 +201,17 @@ public class ArtworkPipeline {
 
     @Transactional
     public void approve(PetArtwork artwork, Instant now) {
+        approveLocked(lockArtwork(artwork), now);
+    }
+
+    private void approveLocked(PetArtwork artwork, Instant now) {
+        if (artwork.generationStatus == ArtGenerationStatus.APPROVED) return;
+        if (artwork.generationStatus != ArtGenerationStatus.AWAITING_APPROVAL) {
+            throw new ArtworkOperationException("not_ready", "Arte indisponível para aprovação");
+        }
         PetArtworkAttempt latest = latestValidAttempt(artwork);
         if (latest == null) {
-            throw new IllegalStateException("Nenhuma tentativa válida para aprovar");
+            throw new ArtworkOperationException("not_ready", "Nenhuma tentativa válida para aprovar");
         }
         approveInternal(artwork, latest.storageKeyPrefix, now);
     }
@@ -179,16 +224,18 @@ public class ArtworkPipeline {
 
         artwork.generationStatus = ArtGenerationStatus.APPROVED;
         pet.artworkStatus = ArtworkStatus.APPROVED;
-        if (pet.bornAt != null) {
-            pet.presentation = PetPresentation.CREATURE;
-        }
         pet.updatedAt = now;
         artwork.updatedAt = now;
+        // O motor pode recarregar o agregado sob a mesma trava; publique primeiro
+        // os metadados nesta transação, sem antecipar o commit da aprovação.
+        PetArtwork.getEntityManager().flush();
+        petLifecycle.onArtworkApproved(pet.id, now);
         emitArtworkReady(pet, artwork.assetVersion, now);
     }
 
     @Transactional
     public void requestVoluntaryRegeneration(PetArtwork artwork, Instant now) {
+        artwork = lockArtwork(artwork);
         if (artwork.voluntaryRegenUsed) {
             throw new ArtworkOperationException("regen_exhausted", "Regeneração voluntária já utilizada");
         }
@@ -204,7 +251,7 @@ public class ArtworkPipeline {
         artwork.voluntaryRegenUsed = true;
         artwork.generationStatus = ArtGenerationStatus.GENERATING;
         artwork.updatedAt = now;
-        runGeneration(artwork, ArtAttemptReason.VOLUNTARY_REGEN, now);
+        runGenerationLocked(artwork, ArtAttemptReason.VOLUNTARY_REGEN, now);
     }
 
     private void markTechnicalFailure(PetArtwork artwork, String code, Instant now) {
@@ -231,7 +278,27 @@ public class ArtworkPipeline {
     }
 
     private static boolean shouldAutoApprove(Pet pet) {
-        return !AccountAddressBinding.isActivelyBound(pet.creatorAccount, pet.address);
+        return pet.creatorAccount == null
+                || !AccountAddressBinding.isActivelyBound(pet.creatorAccount, pet.address);
+    }
+
+    private static boolean readyToGenerate(PetArtwork artwork, Instant now) {
+        return artwork.generationStatus == ArtGenerationStatus.GENERATING
+                || (artwork.generationStatus == ArtGenerationStatus.RETRY_WAIT
+                && artwork.nextRetryAt != null && !artwork.nextRetryAt.isAfter(now));
+    }
+
+    /** Trava compartilhada com saldo, vínculo e exclusão: pet sempre antes da arte. */
+    private static PetArtwork lockArtwork(PetArtwork candidate) {
+        Pet pet = Pet.lockForUpdate(candidate.pet.id);
+        PetArtwork artwork = PetArtwork.findById(candidate.id);
+        if (artwork == null) throw new ArtworkOperationException("not_found", "Arte não encontrada");
+        if (PetArtwork.getEntityManager().getLockMode(artwork) != LockModeType.PESSIMISTIC_WRITE) {
+            artwork = PetArtwork.findById(candidate.id, LockModeType.PESSIMISTIC_WRITE);
+            PetArtwork.getEntityManager().refresh(artwork);
+        }
+        artwork.pet = pet;
+        return artwork;
     }
 
     private static PetArtworkAttempt latestValidAttempt(PetArtwork artwork) {

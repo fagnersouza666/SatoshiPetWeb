@@ -5,6 +5,7 @@ import br.com.satoshipet.api.pet.Pet;
 import br.com.satoshipet.api.platform.AuthenticatedSession;
 import br.com.satoshipet.api.platform.SessionAuthFilter;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
@@ -50,6 +51,12 @@ public class AccountResource {
     @Inject
     AccountPrivateDataWipePort wipePort;
 
+    @Inject
+    SessionCookieFactory cookies;
+
+    @Inject br.com.satoshipet.api.mail.MailPort mail;
+    @Inject MagicLinkTokenConfiguration magicLinkConfiguration;
+
     /**
      * Retorna dados da conta autenticada.
      *
@@ -76,7 +83,8 @@ public class AccountResource {
                 pet.map(p -> p.name).orElse(null),
                 account.addressChangeDeadline != null ? account.addressChangeDeadline.toString() : null
         );
-        return Response.ok(resp).build();
+        return Response.ok(resp).header("Cache-Control", "no-store")
+                .header("X-CSRF-Token", authenticatedSession.csrfToken()).build();
     }
 
     /**
@@ -97,7 +105,7 @@ public class AccountResource {
         try {
             Address newAddress = addressChangeService.change(
                     authenticatedSession.get().account,
-                    body.bitcoinAddress(),
+                    body.bitcoinAddress(), body.petName(),
                     Instant.now()
             );
             return Response.ok(new AddressChangeResponse("ok", newAddress.canonical)).build();
@@ -114,6 +122,7 @@ public class AccountResource {
      */
     @PATCH
     @Path("/pet/name")
+    @Transactional
     public Response renamePet(PetNameRequest body) {
         if (!authenticatedSession.isAuthenticated()) {
             return unauthorized();
@@ -136,10 +145,11 @@ public class AccountResource {
         if (petOpt.isEmpty()) {
             return badRequest("no_pet", "Nenhum pet encontrado para o endereço.");
         }
-        Pet pet = petOpt.get();
+        Pet pet = Pet.lockForUpdate(petOpt.get().id);
 
         // Somente o criador pode renomear (PRD §5)
-        if (!pet.creatorAccount.id.equals(account.id)) {
+        if (pet.creatorAccount == null || !pet.creatorAccount.id.equals(account.id)
+                || !AccountAddressBinding.isActivelyBound(account, pet.address)) {
             return Response.status(403)
                     .entity(new ErrorBody("not_creator", "Apenas o criador do pet pode renomeá-lo."))
                     .build();
@@ -166,7 +176,7 @@ public class AccountResource {
                 authenticatedSession.get().account,
                 Instant.now()
         );
-        return Response.ok(new RecoveryCodeResponse(rawCode)).build();
+        return Response.ok(new RecoveryCodeResponse(rawCode)).header("Cache-Control", "no-store").build();
     }
 
     /**
@@ -174,6 +184,28 @@ public class AccountResource {
      *
      * <p>POST /api/v1/account/recovery/reset
      */
+    @POST
+    @Path("/recovery/email")
+    public Response requestRecoveryEmail(RecoveryEmailRequest body) {
+        if (body == null || body.code() == null || body.email() == null) {
+            return badRequest("recovery_fields_required", "Informe o código de recuperação e o novo e-mail.");
+        }
+        try {
+            var verification = recoveryService.requestEmail(body.code(), body.email(), Instant.now());
+            mail.sendMagicLink(verification.email(), magicLinkConfiguration.baseUrl()
+                    + "/recuperar?token=" + verification.token());
+            return Response.accepted().header("Cache-Control", "no-store")
+                    .entity(new RecoveryEmailResponse("accepted")).build();
+        } catch (RecoveryService.RecoveryException e) {
+            int status = "invalid_email".equals(e.getCode()) ? 400
+                    : "email_unavailable".equals(e.getCode()) ? 409 : 401;
+            return Response.status(status).entity(new ErrorBody(e.getCode(), e.getMessage())).build();
+        } catch (Exception e) {
+            LOG.warn("Falha ao enviar verificação de recuperação (segredos omitidos)");
+            return Response.status(503).entity(new ErrorBody("email_unavailable", "Tente enviar o link novamente.")).build();
+        }
+    }
+
     @POST
     @Path("/recovery/reset")
     public Response recoveryReset(RecoveryResetRequest body, @Context ContainerRequestContext ctx) {
@@ -183,17 +215,14 @@ public class AccountResource {
         try {
             String userAgent = ctx.getHeaderString("User-Agent");
             String ip = extractIp(ctx);
-            SessionService.SessionCreation creation = recoveryService.recover(
-                    body.code(), Instant.now(), userAgent, ip
+            RecoveryService.RecoveryResult recovered = recoveryService.recover(
+                    body.code(), body.token(), Instant.now(), userAgent, ip
             );
-            NewCookie sessionCookie = new NewCookie.Builder(SessionAuthFilter.SESSION_COOKIE)
-                    .value(creation.rawSessionToken())
-                    .path("/")
-                    .httpOnly(true)
-                    .maxAge(60 * 60 * 24 * 30)
-                    .build();
-            return Response.ok(new RecoveryResetResponse("ok"))
+            SessionService.SessionCreation creation = recovered.session();
+            NewCookie sessionCookie = cookies.create(creation.rawSessionToken());
+            return Response.ok(new RecoveryResetResponse("ok", recovered.recoveryCode()))
                     .cookie(sessionCookie)
+                    .header("Cache-Control", "no-store")
                     .header("X-CSRF-Token", creation.rawCsrfToken())
                     .build();
         } catch (RecoveryService.RecoveryException e) {
@@ -214,13 +243,11 @@ public class AccountResource {
             return unauthorized();
         }
         Account account = authenticatedSession.get().account;
-        sessionService.revokeAll(account.id, Instant.now());
         wipePort.wipe(account.id);
 
         LOG.infof("Conta apagada (wipe): account=%s", account.id);
 
-        NewCookie expiredCookie = new NewCookie.Builder(SessionAuthFilter.SESSION_COOKIE)
-                .value("").path("/").httpOnly(true).maxAge(0).build();
+        NewCookie expiredCookie = cookies.expire();
 
         return Response.noContent().cookie(expiredCookie).build();
     }
@@ -233,10 +260,11 @@ public class AccountResource {
         return Response.status(400).entity(new ErrorBody(code, message)).build();
     }
 
+    @Inject
+    br.com.satoshipet.api.platform.ClientAddress clientAddress;
+
     private String extractIp(ContainerRequestContext ctx) {
-        String forwarded = ctx.getHeaderString("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) return forwarded.split(",")[0].trim();
-        return "unknown";
+        return clientAddress.value();
     }
 
     // --- DTOs ---
@@ -251,7 +279,7 @@ public class AccountResource {
             String addressChangeDeadline
     ) {}
 
-    public record AddressChangeRequest(String bitcoinAddress) {}
+    public record AddressChangeRequest(String bitcoinAddress, String petName) {}
     public record AddressChangeResponse(String status, String canonical) {}
 
     public record PetNameRequest(String name) {}
@@ -259,8 +287,10 @@ public class AccountResource {
 
     public record RecoveryCodeResponse(String code) {}
 
-    public record RecoveryResetRequest(String code) {}
-    public record RecoveryResetResponse(String status) {}
+    public record RecoveryEmailRequest(String code, String email) {}
+    public record RecoveryEmailResponse(String status) {}
+    public record RecoveryResetRequest(String code, String token) {}
+    public record RecoveryResetResponse(String status, String recoveryCode) {}
 
     public record ErrorBody(String code, String message) {}
 }

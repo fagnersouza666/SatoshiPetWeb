@@ -128,3 +128,8 @@ Gerar criatura original em pixel art 2D por IA no nascimento, produzir conjunto 
 **Recorte atual:** provedor `ImageGenerationPort` via stub determinístico (`stub-v1`);
 adaptador pago entra em história futura. Clima real (épico CLIMA) enriquece o
 contexto congelado sem regenerar arte aprovada.
+
+**Contrato de execução:** [geração e aprovação da arte](../contratos/arte-pet.md).
+Escritas serializadas por pet e arte; o job reconcilia criador ausente também
+após a geração. Aprovação repetida preserva apresentação e versão; o motor
+decide reaparecimento usando saldo conhecido, nunca somente a data de nascimento.

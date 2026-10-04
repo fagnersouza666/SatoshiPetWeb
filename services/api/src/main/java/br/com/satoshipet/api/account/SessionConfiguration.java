@@ -12,4 +12,8 @@ public interface SessionConfiguration {
     /** Duração padrão da sessão após login. */
     @WithDefault("P30D")
     Duration duration();
+
+    /** HTTPS obrigatório por padrão; somente dev/test podem desabilitar. */
+    @WithDefault("true")
+    boolean secureCookies();
 }

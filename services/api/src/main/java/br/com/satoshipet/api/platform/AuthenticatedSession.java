@@ -13,10 +13,21 @@ import jakarta.enterprise.context.RequestScoped;
 public class AuthenticatedSession {
 
     private Session session;
+    private String csrfToken;
 
     /** Define a sessão autenticada do request. */
     public void set(Session session) {
         this.session = session;
+        this.csrfToken = null;
+    }
+
+    public void set(Session session, String csrfToken) {
+        this.session = session;
+        this.csrfToken = csrfToken;
+    }
+
+    public String csrfToken() {
+        return csrfToken;
     }
 
     /** Retorna a sessão autenticada, ou {@code null} se não autenticado. */

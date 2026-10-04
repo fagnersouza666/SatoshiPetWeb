@@ -9,7 +9,7 @@ import java.util.UUID;
  * possam ser removidos em atendimento à LGPD (CA-070) sem afetar o histórico
  * público de recebimentos on-chain.</p>
  *
- * <p>Implementação real a ser fornecida pelo épico CONTA.</p>
+ * <p>Uso exclusivo na exclusão da conta. Troca de endereço usa limpeza de configuração.</p>
  */
 public interface AccountPrivateDataWipePort {
 

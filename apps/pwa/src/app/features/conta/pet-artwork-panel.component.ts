@@ -26,7 +26,12 @@ import { PetSpriteComponent } from '../../shared/pet-sprite/pet-sprite.component
 
       @if (snapshot(); as snap) {
         <app-pet-sprite
-          [presentation]="snap.presentation"
+          [presentation]="
+            snap.artwork?.generationStatus === 'AWAITING_APPROVAL' &&
+            snap.artwork?.previewUrls?.['atlas']
+              ? 'CREATURE'
+              : snap.presentation
+          "
           [petState]="snap.petState"
           [atlasUrl]="previewAtlasUrl(snap)"
           [petName]="snap.petName"
@@ -158,8 +163,12 @@ export class PetArtworkPanelComponent implements OnInit {
   }
 
   protected previewAtlasUrl(snap: AccountPetSnapshot): string | undefined {
-    if (snap.artwork?.previewUrls?.['atlas']) {
-      return snap.artwork.previewUrls['atlas'];
+    if (
+      snap.artwork?.generationStatus === 'AWAITING_APPROVAL' &&
+      snap.artwork.previewUrls?.['atlas']
+    ) {
+      const url = snap.artwork.previewUrls['atlas'];
+      return `${url}${url.includes('?') ? '&' : '?'}ngsw-bypass=true`;
     }
     return snap.atlasUrl;
   }

@@ -1,127 +1,105 @@
 package br.com.satoshipet.api.realtime;
 
+import br.com.satoshipet.api.outbox.OutboxEvent;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.enterprise.context.ApplicationScoped;
-import org.jboss.logging.Logger;
+import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.transaction.Transactional;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.Objects;
 
-/**
- * Atribui cursores monotônicos por canal de endereço e mantém um ring buffer
- * em memória para suportar reconexões (replay de eventos recentes).
- *
- * <p>O cursor é uma string que representa um contador de 64 bits. O cliente
- * armazena o último cursor recebido e o envia no frame {@code RECONNECT}.
- * O servidor responde com os eventos posteriores ao cursor.</p>
- *
- * <p>Implementação em memória — suficiente para o épico FUND.
- * Em produção com múltiplas réplicas, migrar para Redis XADD/XRANGE.</p>
- */
+/** Projeção durável compartilhada entre réplicas, com replay limitado por consulta. */
 @ApplicationScoped
 public class RealtimeEventCursorService {
+    static final int REPLAY_WINDOW_SIZE = 200;
+    private final EntityManager entityManager;
+    private final ObjectMapper objectMapper;
 
-    private static final Logger LOG = Logger.getLogger(RealtimeEventCursorService.class);
-
-    /** Tamanho máximo do ring buffer por endereço (eventos recentes). */
-    static final int RING_BUFFER_SIZE = 200;
-
-    /** Sequência global de cursores para garantir monotonicidade. */
-    private final AtomicLong globalSequence = new AtomicLong(0);
-
-    /** Buffer de eventos por endereço canônico. */
-    private final Map<String, Deque<StoredEvent>> buffers = new ConcurrentHashMap<>();
-
-    /**
-     * Gera e atribui o próximo cursor para um endereço. Armazena o evento
-     * no ring buffer para permitir replay em reconexões.
-     *
-     * @param canonical endereço Bitcoin canônico (chave do canal)
-     * @param eventType tipo do evento (catálogo único PRD §16.3)
-     * @param data      dados do evento a armazenar
-     * @return cursor atribuído ao evento (string numérica monotônica)
-     */
-    public String nextCursor(String canonical, String eventType, Object data) {
-        String cursor = String.valueOf(globalSequence.incrementAndGet());
-
-        Deque<StoredEvent> buffer = buffers.computeIfAbsent(canonical, k -> new ArrayDeque<>(RING_BUFFER_SIZE));
-        synchronized (buffer) {
-            if (buffer.size() >= RING_BUFFER_SIZE) {
-                buffer.removeFirst(); // descarta o mais antigo
-            }
-            buffer.addLast(new StoredEvent(cursor, eventType, data));
-        }
-
-        LOG.tracef("Cursor %s atribuído para address=%s eventType=%s", cursor, canonical, eventType);
-        return cursor;
+    @Inject
+    public RealtimeEventCursorService(EntityManager entityManager, ObjectMapper objectMapper) {
+        this.entityManager = entityManager;
+        this.objectMapper = objectMapper;
     }
 
     /**
-     * Retorna o cursor atual (último emitido para o endereço) sem avançar.
-     * Retorna "0" se nenhum evento foi emitido ainda para o endereço.
-     *
-     * @param canonical endereço Bitcoin canônico
-     * @return último cursor emitido, ou "0"
+     * Aplica uma identidade de outbox uma única vez na mesma transação do consumidor.
+     * A trava do relógio precede qualquer trava por evento e dura até commit/rollback.
+     * Assim um cursor maior não fica visível antes de um cursor menor ainda pendente.
      */
+    @Transactional(Transactional.TxType.MANDATORY)
+    public String record(OutboxEvent event, String canonical) {
+        Objects.requireNonNull(event, "event");
+        Objects.requireNonNull(canonical, "canonical");
+        entityManager.createNativeQuery("SELECT id FROM realtime_cursor_clock WHERE id = 1 FOR UPDATE")
+                .getSingleResult();
+        OutboxEvent persisted = entityManager.find(OutboxEvent.class, event.id, LockModeType.PESSIMISTIC_WRITE);
+        if (persisted == null) throw new IllegalArgumentException("Evento precisa existir na outbox antes da projeção");
+        List<Long> existing = entityManager.createQuery(
+                        "SELECT r.cursor FROM RealtimeEventReceipt r WHERE r.event.id = :eventId", Long.class)
+                .setParameter("eventId", event.id).getResultList();
+        if (!existing.isEmpty()) return existing.getFirst().toString();
+        RealtimeEventReceipt receipt = new RealtimeEventReceipt();
+        receipt.event = persisted;
+        receipt.canonical = canonical;
+        entityManager.persist(receipt);
+        entityManager.flush();
+        return receipt.cursor.toString();
+    }
+
+    @Transactional(Transactional.TxType.SUPPORTS)
     public String currentCursor(String canonical) {
-        Deque<StoredEvent> buffer = buffers.get(canonical);
-        if (buffer == null) {
-            return "0";
-        }
-        synchronized (buffer) {
-            StoredEvent last = buffer.peekLast();
-            return last != null ? last.cursor() : "0";
-        }
+        Long cursor = entityManager.createQuery(
+                        "SELECT MAX(r.cursor) FROM RealtimeEventReceipt r WHERE r.canonical = :canonical", Long.class)
+                .setParameter("canonical", canonical).getSingleResult();
+        return cursor == null ? "0" : cursor.toString();
     }
 
     /**
-     * Retorna os eventos posteriores ao cursor informado (replay para reconexão).
-     * Retorna lista vazia se o cursor for mais recente que o buffer ou não
-     * houver eventos registrados.
-     *
-     * @param canonical    endereço Bitcoin canônico
-     * @param afterCursor  cursor a partir do qual recuperar (exclusive)
-     * @return eventos posteriores ao cursor, ordenados do mais antigo ao mais recente
+     * Carrega no máximo 200 eventos recentes, sem manter cópia histórica no heap.
+     * Cursor fora da janela, inválido ou adiantado exige snapshot do estado atual.
      */
-    public List<StoredEvent> eventsAfter(String canonical, String afterCursor) {
-        Deque<StoredEvent> buffer = buffers.get(canonical);
-        if (buffer == null) {
-            return List.of();
-        }
-
+    @Transactional(Transactional.TxType.SUPPORTS)
+    public Replay replayAfter(String canonical, String requestedCursor) {
+        List<RealtimeEventReceipt> latest = entityManager.createQuery(
+                        "SELECT r FROM RealtimeEventReceipt r JOIN FETCH r.event "
+                                + "WHERE r.canonical = :canonical ORDER BY r.cursor DESC", RealtimeEventReceipt.class)
+                .setParameter("canonical", canonical).setMaxResults(REPLAY_WINDOW_SIZE).getResultList();
+        String current = latest.isEmpty() ? "0" : latest.getFirst().cursor.toString();
         long after;
         try {
-            after = Long.parseLong(afterCursor);
-        } catch (NumberFormatException e) {
-            LOG.warnf("Cursor inválido '%s' para address=%s — retornando lista vazia", afterCursor, canonical);
-            return List.of();
+            after = Long.parseLong(requestedCursor);
+            if (after < 0) return new Replay(current, List.of(), true);
+        } catch (NumberFormatException exception) {
+            return new Replay(current, List.of(), true);
         }
-
-        synchronized (buffer) {
-            List<StoredEvent> result = new ArrayList<>();
-            for (StoredEvent event : buffer) {
-                try {
-                    if (Long.parseLong(event.cursor()) > after) {
-                        result.add(event);
-                    }
-                } catch (NumberFormatException ignore) {
-                    // cursor malformado no buffer — ignorar
-                }
+        long maximum = Long.parseLong(current);
+        if (after > maximum) return new Replay(current, List.of(), true);
+        if (latest.isEmpty()) return new Replay(current, List.of(), false);
+        long oldest = latest.getLast().cursor;
+        if (after < oldest && (latest.size() == REPLAY_WINDOW_SIZE || after != 0)) {
+            return new Replay(current, List.of(), true);
+        }
+        List<StoredEvent> events = new ArrayList<>();
+        for (RealtimeEventReceipt receipt : latest) {
+            if (receipt.cursor <= after) continue;
+            try {
+                events.add(new StoredEvent(receipt.cursor.toString(), receipt.event.eventType,
+                        objectMapper.readTree(receipt.event.payload)));
+            } catch (JsonProcessingException exception) {
+                // Um payload ilegível não pode ser pulado como se tivesse sido aplicado.
+                return new Replay(current, List.of(), true);
             }
-            return List.copyOf(result);
         }
+        Collections.reverse(events);
+        return new Replay(current, List.copyOf(events), false);
     }
 
-    /**
-     * Evento armazenado no ring buffer com cursor, tipo e dados.
-     *
-     * @param cursor    cursor monotônico do evento
-     * @param eventType tipo do evento (catálogo único)
-     * @param data      dados do evento (objeto serializável)
-     */
+    public record Replay(String currentCursor, List<StoredEvent> events, boolean snapshotRequired) {}
     public record StoredEvent(String cursor, String eventType, Object data) {}
 }

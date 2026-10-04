@@ -3,6 +3,7 @@ package br.com.satoshipet.api.job;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceException;
 import jakarta.transaction.Transactional;
 import org.jboss.logging.Logger;
@@ -90,6 +91,37 @@ public class JobLockService {
                 .executeUpdate();
 
         return updated == 1;
+    }
+
+    /**
+     * Executa uma unidade somente enquanto esta invocação é dona da concessão.
+     * A trava de linha permanece até o commit dos efeitos e da renovação: passar
+     * o TTL durante o trabalho não autoriza outra réplica a executá-lo em paralelo.
+     * O trabalho deve participar desta transação (REQUIRED), sem abrir REQUIRES_NEW.
+     *
+     * @return false se a concessão expirou, desapareceu ou mudou de dono; nesse
+     * caso o chamador deve interromper o ciclo, sem executar o próximo item.
+     */
+    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    public boolean runWhileOwned(String jobName, String ownerId, Duration ttl, Runnable work) {
+        Objects.requireNonNull(jobName, "jobName");
+        Objects.requireNonNull(ownerId, "ownerId");
+        Objects.requireNonNull(work, "work");
+        requirePositiveTtl(ttl);
+
+        JobLock lock = em.find(JobLock.class, jobName, LockModeType.PESSIMISTIC_WRITE);
+        if (lock == null) return false;
+        // Releitura sob a trava, inclusive se a aquisição precisou aguardar outra TX.
+        em.refresh(lock, LockModeType.PESSIMISTIC_WRITE);
+        Instant now = Instant.now();
+        if (!ownerId.equals(lock.ownerId) || !lock.expiresAt.isAfter(now)) return false;
+
+        lock.acquiredAt = now;
+        lock.expiresAt = now.plus(ttl);
+        work.run();
+        lock.acquiredAt = Instant.now();
+        lock.expiresAt = lock.acquiredAt.plus(ttl);
+        return true;
     }
 
     private static void requirePositiveTtl(Duration ttl) {

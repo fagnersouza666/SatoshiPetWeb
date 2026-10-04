@@ -58,3 +58,16 @@ A PWA deve:
 1. Armazenar o CSRF bruto apenas em memória (não em `localStorage`).
 2. Enviar `X-CSRF-Token` em toda mutation autenticada.
 3. Limpar cache privado no logout (CA-067) via `PrivateCacheService`.
+
+## Restauração de sessão e cookies (auditoria BUG-011/025)
+
+`GET /api/v1/account/me` valida o cookie e retorna `Cache-Control: no-store` e
+`X-CSRF-Token` novamente. O CSRF é SHA-256 de `satoshi-pet:csrf:v1:` concatenado
+ao segredo de sessão de 256 bits; o banco conserva somente seu hash verificador.
+A separação de domínio impede usar o hash de sessão persistido como CSRF. Duas
+abas recebem o mesmo token sem invalidarem uma à outra. A migration V9 revoga
+uma única vez sessões antigas cujo CSRF aleatório não pode ser recuperado.
+
+A fábrica `SessionCookieFactory` aplica HttpOnly, SameSite=Strict, Path=/ e o
+prazo configurado em todos os fluxos, inclusive expiração. `secure-cookies`
+é true por padrão; somente HTTP local em dev/test o desabilita explicitamente.

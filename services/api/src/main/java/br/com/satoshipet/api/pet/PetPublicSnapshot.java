@@ -4,7 +4,7 @@ import br.com.satoshipet.api.account.Address;
 import br.com.satoshipet.api.art.ArtGenerationStatus;
 import br.com.satoshipet.api.art.ArtworkKeys;
 import br.com.satoshipet.api.art.PetArtwork;
-import br.com.satoshipet.api.btc.LogicalReceipt;
+import br.com.satoshipet.api.btc.AddressMonitorState;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.Objects;
@@ -99,9 +99,8 @@ public record PetPublicSnapshot(
         if (pet.isEmpty()) {
             return empty();
         }
-        long pendingIncomingSats = LogicalReceipt.findByAddress(address).stream()
-                .mapToLong(receipt -> receipt.pendingSats)
-                .sum();
+        long pendingIncomingSats = AddressMonitorState.findByAddress(address)
+                .map(state -> state.pendingBalanceSats).orElse(0L);
         return withApprovedArtwork(from(pet.get(), pendingIncomingSats), pet.get());
     }
 

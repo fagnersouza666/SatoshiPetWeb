@@ -71,7 +71,7 @@
     },
     {
       "name": "api-freshness",
-      "urls": ["/api/**"],
+      "urls": ["/api/v1/public/**"],
       "cacheConfig": {
         "strategy": "freshness",
         "maxSize": 100,

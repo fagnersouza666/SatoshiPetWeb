@@ -27,12 +27,11 @@ public class PetTickJob {
     /** Nome do lock distribuído e identity do agendamento. */
     static final String JOB_NAME = "pet-tick";
 
-    /** TTL do lock — maior que a duração esperada do ciclo. */
+    /** Janela entre unidades; cada unidade mantém trava até o commit. */
     static final Duration LOCK_TTL = Duration.ofSeconds(120);
 
     private final JobLockService jobLockService;
     private final PetLifecyclePort petLifecycle;
-    private final String ownerId = UUID.randomUUID().toString();
 
     @Inject
     public PetTickJob(JobLockService jobLockService, PetLifecyclePort petLifecycle) {
@@ -43,12 +42,13 @@ public class PetTickJob {
     @Scheduled(every = "60s", identity = JOB_NAME)
     public void tick() {
         try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
+            String ownerId = UUID.randomUUID().toString();
             if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
                 LOG.debugf("Lock do job '%s' detido por outra instância — ciclo ignorado", JOB_NAME);
                 return;
             }
             try {
-                runTickCycle();
+                runTickCycle(ownerId);
             } finally {
                 jobLockService.release(JOB_NAME, ownerId);
             }
@@ -58,8 +58,7 @@ public class PetTickJob {
     /**
      * Tique UTC de todos os pets. Visibilidade de pacote para testes.
      */
-    void runTickCycle() {
-        Instant now = Instant.now();
+    void runTickCycle(String ownerId) {
         List<Pet> pets = Pet.listAll();
         if (pets.isEmpty()) {
             LOG.debugf("Nenhum pet para tique.");
@@ -70,7 +69,11 @@ public class PetTickJob {
         int failCount = 0;
         for (Pet pet : pets) {
             try {
-                petLifecycle.tick(pet.id, now);
+                if (!jobLockService.runWhileOwned(JOB_NAME, ownerId, LOCK_TTL,
+                        () -> petLifecycle.tick(pet.id, Instant.now()))) {
+                    LOG.infof("Concessão perdida; interrompendo ciclo do pet");
+                    break;
+                }
                 successCount++;
             } catch (Exception e) {
                 failCount++;

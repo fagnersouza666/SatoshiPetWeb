@@ -6,6 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth.service';
 import { API_BASE_URL } from './api-config';
 import { SessionService } from './session.service';
+import { ApiClientService } from './api-client.service';
 import { PrivateCacheService } from './private-cache.service';
 
 const accountResponse = {
@@ -157,21 +158,26 @@ describe('AuthService: contratos HTTP reais da API', () => {
     expect(clearCaches).toHaveBeenCalledOnce();
   });
   it('recupera pelo código real, carrega a conta e navega', async () => {
-    const result = service.recoverAndNavigate('recovery-fixture');
+    const result = service.recoverAccess('recovery-fixture', 'email-token');
     const request = http.expectOne('/api/v1/account/recovery/reset');
-    expect(request.request.body).toEqual({ code: 'recovery-fixture' });
-    request.flush({ status: 'ok' }, { headers: { 'X-CSRF-Token': 'csrf-recovery' } });
-    await Promise.resolve();
+    expect(request.request.body).toEqual({ code: 'recovery-fixture', token: 'email-token' });
+    request.flush(
+      { status: 'ok', recoveryCode: 'new-recovery-code' },
+      { headers: { 'X-CSRF-Token': 'csrf-recovery' } },
+    );
+    await expect(result).resolves.toBe('new-recovery-code');
+    expect(navigate).not.toHaveBeenCalled();
+    const opened = service.openRecoveredAccount();
     const fresh = http.expectOne('/api/v1/account/me?ngsw-bypass=true');
     expect(fresh.request.cache).toBe('no-store');
     fresh.flush(accountResponse);
-    await result;
+    await opened;
     expect(session.account()).toEqual(account);
     expect(navigate).toHaveBeenCalledWith(['/conta']);
   });
 
   it('não navega nem cria sessão com código de recuperação rejeitado', async () => {
-    const result = service.recoverAndNavigate('used-code');
+    const result = service.recoverAccess('used-code', 'email-token');
     const rejected = expect(result).rejects.toMatchObject({ status: 401 });
     http
       .expectOne('/api/v1/account/recovery/reset')
@@ -230,7 +236,7 @@ describe('AuthService: contratos HTTP reais da API', () => {
     http.expectNone('/api/v1/auth/register');
   });
 
-  it.each(['verify', 'register', 'recover'] as const)(
+  it.each(['verify', 'register'] as const)(
     'retoma %s sem reutilizar segredo consumido após falha temporária de /me',
     async (flow) => {
       if (flow === 'register') {
@@ -243,17 +249,10 @@ describe('AuthService: contratos HTTP reais da API', () => {
       const action = () =>
         flow === 'verify'
           ? service.verifyAndNavigate('login-fixture')
-          : flow === 'recover'
-            ? service.recoverAndNavigate('recovery-fixture')
-            : firstValueFrom(
-                service.register({ address: account.address, petName: account.petName }),
-              );
-      const path =
-        flow === 'verify'
-          ? '/api/v1/auth/magic-link/verify'
-          : flow === 'recover'
-            ? '/api/v1/account/recovery/reset'
-            : '/api/v1/auth/register';
+          : firstValueFrom(
+              service.register({ address: account.address, petName: account.petName }),
+            );
+      const path = flow === 'verify' ? '/api/v1/auth/magic-link/verify' : '/api/v1/auth/register';
       const first = action();
       const rejected = expect(first).rejects.toMatchObject({ status: 503 });
       http
@@ -276,4 +275,69 @@ describe('AuthService: contratos HTTP reais da API', () => {
       if (flow !== 'register') expect(session.account()).toEqual(account);
     },
   );
+  it('restaura a identidade e o CSRF depois de recarregar a aplicação', async () => {
+    const result = service.restoreSession();
+    const restored = http.expectOne('/api/v1/account/me?ngsw-bypass=true');
+    expect(restored.request.cache).toBe('no-store');
+    restored.flush(accountResponse, { headers: { 'X-CSRF-Token': 'restored-csrf' } });
+    await result;
+    expect(session.account()).toEqual(account);
+    const logout = service.logout();
+    const request = http.expectOne('/api/v1/auth/logout');
+    expect(request.request.headers.get('X-CSRF-Token')).toBe('restored-csrf');
+    request.flush(null);
+    await logout;
+  });
+
+  it.each([0, 401])(
+    'bootstrap sem resposta autenticada (%s) não inventa identidade offline',
+    async (status) => {
+      const result = service.restoreSession();
+      const request = http.expectOne('/api/v1/account/me?ngsw-bypass=true');
+      if (status === 0) request.error(new ProgressEvent('error'));
+      else request.flush({}, { status, statusText: 'Unauthorized' });
+      await result;
+      expect(session.isAuthenticated()).toBe(false);
+    },
+  );
+
+  it('401 de leitura privada remove identidade e caches antigos', async () => {
+    session.setSession(account);
+    const result = firstValueFrom(TestBed.inject(ApiClientService).getFresh('/v1/account/pet'));
+    const rejected = expect(result).rejects.toMatchObject({ status: 401 });
+    http
+      .expectOne('/api/v1/account/pet?ngsw-bypass=true')
+      .flush({}, { status: 401, statusText: 'Unauthorized' });
+    await rejected;
+    expect(session.isAuthenticated()).toBe(false);
+    expect(clearCaches).toHaveBeenCalled();
+  });
+
+  it('solicita verificação do novo e-mail sem consumir o código de recuperação', async () => {
+    const result = service.requestRecoveryEmail('backup-code', 'new@example.invalid');
+    const request = http.expectOne('/api/v1/account/recovery/email');
+    expect(request.request.body).toEqual({ code: 'backup-code', email: 'new@example.invalid' });
+    request.flush(null, { status: 202, statusText: 'Accepted' });
+    await result;
+    expect(session.isAuthenticated()).toBe(false);
+  });
+
+  it('permite repetir abertura de conta após recuperação sem consumir novamente os segredos', async () => {
+    const recovered = service.recoverAccess('backup-code', 'verified-token');
+    http
+      .expectOne('/api/v1/account/recovery/reset')
+      .flush({ status: 'ok', recoveryCode: 'replacement-code' });
+    await expect(recovered).resolves.toBe('replacement-code');
+    const opened = service.openRecoveredAccount();
+    const rejected = expect(opened).rejects.toMatchObject({ status: 503 });
+    http
+      .expectOne('/api/v1/account/me?ngsw-bypass=true')
+      .flush({}, { status: 503, statusText: 'Unavailable' });
+    await rejected;
+    const retry = service.openRecoveredAccount();
+    http.expectNone('/api/v1/account/recovery/reset');
+    http.expectOne('/api/v1/account/me?ngsw-bypass=true').flush(accountResponse);
+    await retry;
+    expect(session.account()).toEqual(account);
+  });
 });

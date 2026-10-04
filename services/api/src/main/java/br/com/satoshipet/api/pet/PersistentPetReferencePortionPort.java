@@ -130,12 +130,7 @@ public class PersistentPetReferencePortionPort implements PetReferencePortionPor
     }
 
     private static Pet loadPet(UUID petId) {
-        Objects.requireNonNull(petId, "petId");
-        Pet pet = Pet.findById(petId);
-        if (pet == null) {
-            throw new IllegalArgumentException("Pet não encontrado: " + petId);
-        }
-        return pet;
+        return Pet.lockForUpdate(petId);
     }
 
     private static Account loadSourceAccount(UUID sourceAccountId) {

@@ -65,4 +65,24 @@ describe('CadastroComponent: interrupção e repetição', () => {
     expect(TestBed.inject(SessionService).account()).toEqual(account);
     expect(navigate).toHaveBeenCalledWith(['/conta']);
   });
+  it('aceita Bech32 todo em maiúsculo', () => {
+    const { fixture, submit, register } = setup();
+    const input = fixture.nativeElement.querySelector('[formControlName="address"]');
+    input.value = account.address.toUpperCase();
+    input.dispatchEvent(new Event('input'));
+    submit();
+    expect(register).toHaveBeenCalledExactlyOnceWith({
+      address: account.address.toUpperCase(),
+      petName: account.petName,
+    });
+  });
+
+  it('rejeita Bech32 com caixa mista antes do envio', () => {
+    const { fixture, submit, register } = setup();
+    const input = fixture.nativeElement.querySelector('[formControlName="address"]');
+    input.value = 'BC1' + account.address.slice(3);
+    input.dispatchEvent(new Event('input'));
+    submit();
+    expect(register).not.toHaveBeenCalled();
+  });
 });

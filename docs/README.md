@@ -8,6 +8,7 @@
 | [backlog/README.md](./backlog/README.md) | Backlog de implementação — índice, convenções e ordem de entrega |
 | [../AGENTS.md](../AGENTS.md) | Guia para agentes de IA — stack, invariantes e convenções do projeto |
 | [operacao/tls.md](./operacao/tls.md) | Perfis TLS staging/prod e contrato com o proxy/ingress |
+| [bug-report.md](./bug-report.md) | Auditoria de bugs do projeto (04/10/2026): evidências, correções propostas e limites da validação |
 
 ## Contratos
 
@@ -21,6 +22,10 @@
 | [contratos/eventos-bitcoin.md](./contratos/eventos-bitcoin.md) | Catálogo versionado de eventos e transições do monitor Bitcoin |
 | [contratos/eventos-bitcoin-redaction.md](./contratos/eventos-bitcoin-redaction.md) | Allowlist e redaction da projeção pública dos eventos Bitcoin |
 | [contratos/eventos-pet.md](./contratos/eventos-pet.md) | Catálogo `PET_*` (payload público, CA-009) |
+| [contratos/pet-reserva.md](./contratos/pet-reserva.md) | Reserva, relógio monotônico e recomposição após correções on-chain |
+| [contratos/arte-pet.md](./contratos/arte-pet.md) | Aprovação serializada e reconciliação da arte sem criador ativo |
+| [contratos/pwa-arte.md](./contratos/pwa-arte.md) | Prévia privada da aparência na PWA |
+| [contratos/pwa-recuperacao.md](./contratos/pwa-recuperacao.md) | Recuperação com confirmação do novo e-mail e novo código |
 | [contratos/pet-apresentacao-e-stats.md](./contratos/pet-apresentacao-e-stats.md) | Fila de apresentação, skip e estatísticas do pet da conta |
 | [contratos/eventos-fundacao.md](./contratos/eventos-fundacao.md) | Catálogo único de nomes de eventos da fundação |
 | [contratos/object-storage.md](./contratos/object-storage.md) | Endpoints, buckets e variáveis do MinIO local |
@@ -53,6 +58,13 @@ As versões de referência ficam declaradas em [`.nvmrc`](../.nvmrc) (Node.js
 Maven Wrapper versionado em `services/api/mvnw`, portanto não é necessário
 instalar Maven no host.
 
+Os testes JVM carregam o Mockito como `javaagent` no início do processo pelo
+Surefire/Failsafe, preservando os argumentos do Quarkus. Isso evita depender do
+attach dinâmico bloqueado por alguns ambientes Java 25; a dependência continua
+exclusiva de testes. Para testar serviços CDI/H2 em um ambiente sem sockets,
+é possível selecionar testes sem HTTP com `-Dquarkus.http.host-enabled=false`.
+Esse modo não substitui os gates HTTP e PostgreSQL/Testcontainers.
+
 **Ambiente oficial:** Linux (CI, deploy, dev principal). **Windows:** dev
 ocasional — use `npm run …` na raiz; não dependa de bash.
 
@@ -76,9 +88,12 @@ Os comandos abaixo devem ser executados na raiz do repositório:
 | `npm run test:api` | Executa somente os testes da API |
 | `npm run verify` | Confere a versão do produto, testa a PWA e executa `verify` da API |
 | `npm run test:versao` | Testes do script `infra/scripts/versao.mjs` |
-| `npm run test:infra` | Teste do bootstrap idempotente dos buckets MinIO |
+| `npm run test:infra` | Bootstrap idempotente MinIO e configuração consolidada de implantação |
 | `npm run test:csp` | Verifica a CSP canônica no Caddy, nginx e API |
 | `npm run versao -- atual` | Mostra as versões da raiz, PWA e API |
 | `npm run versao -- verificar` | Falha se as três versões divergirem |
 | `npm run check:pwa` | Prova local da PWA (`versao verificar` + testes) |
 | `npm run check:api` | Prova local da API (`versao verificar` + `mvnw verify`; exige Docker) |
+
+- [Execução exclusiva de jobs](contratos/jobs-concorrencia.md) — concessão por invocação e unidade transacional.
+- [Ciclo de vida da conta](contratos/conta-ciclo-de-vida.md) — recuperação, endereço e exclusão privada.

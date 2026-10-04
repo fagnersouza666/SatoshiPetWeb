@@ -60,6 +60,22 @@ public class PetFeeding extends PanacheEntityBase {
     @Column(name = "duration_hours", nullable = false, precision = 20, scale = 10)
     public BigDecimal durationHours;
 
+    /** Snapshot original; correções alteram a projeção, nunca estes valores. */
+    @Column(name = "initial_amount_sats", nullable = false, updatable = false)
+    public long initialAmountSats;
+
+    @Column(name = "initial_portion_sats", nullable = false, updatable = false)
+    public long initialPortionSats;
+
+    @Column(name = "initial_duration_hours", nullable = false, updatable = false, precision = 20, scale = 10)
+    public BigDecimal initialDurationHours;
+
+    @Column(name = "credit_effective_at", nullable = false)
+    public Instant creditEffectiveAt;
+
+    @Column(name = "reserve_eligible", nullable = false)
+    public boolean reserveEligible;
+
     @Column(name = "effective_at", nullable = false, updatable = false)
     public Instant effectiveAt;
 
@@ -114,6 +130,11 @@ public class PetFeeding extends PanacheEntityBase {
         feeding.amountSats = amountSats;
         feeding.portionSats = portionSats;
         feeding.durationHours = durationHours;
+        feeding.initialAmountSats = amountSats;
+        feeding.initialPortionSats = portionSats;
+        feeding.initialDurationHours = durationHours;
+        feeding.creditEffectiveAt = effectiveAt;
+        feeding.reserveEligible = status == FeedingStatus.VALID || presentable;
         feeding.effectiveAt = effectiveAt;
         feeding.ruleVersion = ReserveMath.RULE_VERSION;
         feeding.status = status;

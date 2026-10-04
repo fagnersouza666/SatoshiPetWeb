@@ -78,7 +78,9 @@
   "allOf": [
     {
       "if": {
-        "required": ["eventType"],
+        "required": [
+          "eventType"
+        ],
         "properties": {
           "eventType": {
             "const": "BITCOIN_TRANSACTION_OBSERVED"
@@ -95,7 +97,9 @@
     },
     {
       "if": {
-        "required": ["eventType"],
+        "required": [
+          "eventType"
+        ],
         "properties": {
           "eventType": {
             "const": "BITCOIN_TRANSACTION_CONFIRMED"
@@ -112,7 +116,9 @@
     },
     {
       "if": {
-        "required": ["eventType"],
+        "required": [
+          "eventType"
+        ],
         "properties": {
           "eventType": {
             "const": "BITCOIN_TRANSACTION_REPLACED"
@@ -129,7 +135,9 @@
     },
     {
       "if": {
-        "required": ["eventType"],
+        "required": [
+          "eventType"
+        ],
         "properties": {
           "eventType": {
             "const": "BITCOIN_TRANSACTION_DROPPED"
@@ -146,7 +154,9 @@
     },
     {
       "if": {
-        "required": ["eventType"],
+        "required": [
+          "eventType"
+        ],
         "properties": {
           "eventType": {
             "const": "BITCOIN_CHAIN_REORG"
@@ -163,7 +173,9 @@
     },
     {
       "if": {
-        "required": ["eventType"],
+        "required": [
+          "eventType"
+        ],
         "properties": {
           "eventType": {
             "const": "BITCOIN_BALANCE_RECONCILED"
@@ -192,7 +204,12 @@
     },
     "network": {
       "type": "string",
-      "enum": ["mainnet", "testnet", "regtest", "signet"],
+      "enum": [
+        "mainnet",
+        "testnet",
+        "regtest",
+        "signet"
+      ],
       "description": "Rede Bitcoin. Produção aceita somente mainnet; as demais redes são destinadas a testes."
     },
     "address": {
@@ -224,7 +241,11 @@
     },
     "output": {
       "type": "object",
-      "required": ["vout", "address", "amountSats"],
+      "required": [
+        "vout",
+        "address",
+        "amountSats"
+      ],
       "properties": {
         "vout": {
           "$ref": "#/$defs/vout"
@@ -240,7 +261,10 @@
     },
     "block": {
       "type": "object",
-      "required": ["hash", "height"],
+      "required": [
+        "hash",
+        "height"
+      ],
       "properties": {
         "hash": {
           "$ref": "#/$defs/txid"
@@ -254,7 +278,11 @@
     },
     "confirmedBlock": {
       "type": "object",
-      "required": ["hash", "height", "confirmations"],
+      "required": [
+        "hash",
+        "height",
+        "confirmations"
+      ],
       "properties": {
         "hash": {
           "$ref": "#/$defs/txid"
@@ -272,7 +300,10 @@
     },
     "outpoint": {
       "type": "object",
-      "required": ["txid", "vout"],
+      "required": [
+        "txid",
+        "vout"
+      ],
       "properties": {
         "txid": {
           "$ref": "#/$defs/txid"
@@ -285,22 +316,40 @@
     },
     "transactionStatus": {
       "type": "string",
-      "enum": ["MEMPOOL", "CONFIRMED", "REPLACED", "DROPPED", "UNKNOWN"]
+      "enum": [
+        "MEMPOOL",
+        "CONFIRMED",
+        "REPLACED",
+        "DROPPED",
+        "UNKNOWN"
+      ]
     },
     "reorgTransaction": {
       "type": "object",
-      "required": ["txid", "previousStatus", "currentStatus"],
+      "required": [
+        "txid",
+        "previousStatus",
+        "currentStatus"
+      ],
       "properties": {
         "txid": {
           "$ref": "#/$defs/txid"
         },
         "previousStatus": {
           "type": "string",
-          "enum": ["MEMPOOL", "CONFIRMED", "UNKNOWN"]
+          "enum": [
+            "MEMPOOL",
+            "CONFIRMED",
+            "UNKNOWN"
+          ]
         },
         "currentStatus": {
           "type": "string",
-          "enum": ["MEMPOOL", "CONFIRMED", "UNKNOWN"]
+          "enum": [
+            "MEMPOOL",
+            "CONFIRMED",
+            "UNKNOWN"
+          ]
         },
         "previousBlock": {
           "$ref": "#/$defs/block"
@@ -334,11 +383,17 @@
         },
         "status": {
           "type": "string",
-          "enum": ["MEMPOOL", "CONFIRMED"]
+          "enum": [
+            "MEMPOOL",
+            "CONFIRMED"
+          ]
         },
         "source": {
           "type": "string",
-          "enum": ["MEMPOOL", "BLOCK"]
+          "enum": [
+            "MEMPOOL",
+            "BLOCK"
+          ]
         },
         "outputs": {
           "type": "array",
@@ -365,7 +420,9 @@
             }
           },
           "then": {
-            "required": ["block"]
+            "required": [
+              "block"
+            ]
           }
         },
         {
@@ -377,7 +434,9 @@
             }
           },
           "then": {
-            "required": ["block"]
+            "required": [
+              "block"
+            ]
           }
         }
       ],
@@ -408,14 +467,20 @@
         },
         "previousStatus": {
           "type": "string",
-          "enum": ["MEMPOOL", "UNKNOWN"]
+          "enum": [
+            "MEMPOOL",
+            "UNKNOWN"
+          ]
         },
         "status": {
           "const": "CONFIRMED"
         },
         "source": {
           "type": "string",
-          "enum": ["MEMPOOL", "BLOCK"]
+          "enum": [
+            "MEMPOOL",
+            "BLOCK"
+          ]
         },
         "outputs": {
           "type": "array",
@@ -465,7 +530,10 @@
         },
         "replacementStatus": {
           "type": "string",
-          "enum": ["MEMPOOL", "CONFIRMED"]
+          "enum": [
+            "MEMPOOL",
+            "CONFIRMED"
+          ]
         },
         "conflictInputs": {
           "type": "array",
@@ -485,11 +553,17 @@
     },
     "dropEvidence": {
       "type": "object",
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["RECONCILIATION", "CONFLICT", "INVALIDATION"]
+          "enum": [
+            "RECONCILIATION",
+            "CONFLICT",
+            "INVALIDATION"
+          ]
         },
         "reconciledAt": {
           "$ref": "#/$defs/dateTime"
@@ -511,7 +585,10 @@
             }
           },
           "then": {
-            "required": ["reconciledAt", "tip"]
+            "required": [
+              "reconciledAt",
+              "tip"
+            ]
           }
         },
         {
@@ -523,7 +600,9 @@
             }
           },
           "then": {
-            "required": ["replacementTxid"]
+            "required": [
+              "replacementTxid"
+            ]
           }
         }
       ],
@@ -553,14 +632,23 @@
         },
         "previousStatus": {
           "type": "string",
-          "enum": ["MEMPOOL", "CONFIRMED", "REPLACED", "UNKNOWN"]
+          "enum": [
+            "MEMPOOL",
+            "CONFIRMED",
+            "REPLACED",
+            "UNKNOWN"
+          ]
         },
         "status": {
           "const": "DROPPED"
         },
         "reason": {
           "type": "string",
-          "enum": ["RECONCILED_ABSENCE", "REPLACED", "INVALIDATED"]
+          "enum": [
+            "RECONCILED_ABSENCE",
+            "REPLACED",
+            "INVALIDATED"
+          ]
         },
         "evidence": {
           "$ref": "#/$defs/dropEvidence"
@@ -654,18 +742,46 @@
           "$ref": "#/$defs/address"
         },
         "oldTip": {
-          "$ref": "#/$defs/block"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/block"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "newTip": {
-          "$ref": "#/$defs/block"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/block"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "forkHeight": {
-          "type": "integer",
-          "minimum": 0
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "depth": {
-          "type": "integer",
-          "minimum": 1
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "affectedTransactions": {
           "type": "array",
@@ -675,10 +791,24 @@
           }
         },
         "previousConfirmedBalanceSats": {
-          "$ref": "#/$defs/sats"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sats"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "currentConfirmedBalanceSats": {
-          "$ref": "#/$defs/sats"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sats"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false

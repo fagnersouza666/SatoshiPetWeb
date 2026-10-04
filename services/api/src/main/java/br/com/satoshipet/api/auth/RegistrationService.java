@@ -1,6 +1,7 @@
 package br.com.satoshipet.api.auth;
 
 import br.com.satoshipet.api.account.Account;
+import br.com.satoshipet.api.account.AccountMutationLock;
 import br.com.satoshipet.api.account.AccountAddressBinding;
 import br.com.satoshipet.api.account.Address;
 import br.com.satoshipet.api.account.MagicLinkToken;
@@ -63,6 +64,7 @@ public class RegistrationService {
             String ip,
             Instant now
     ) {
+        AccountMutationLock.acquire();
         // 1. Consome o token de magic link
         Optional<MagicLinkToken> consumed = tokenService.consume(rawToken, now);
         if (consumed.isEmpty()) {
@@ -90,10 +92,8 @@ public class RegistrationService {
 
         // 5. Valida fuso horário
         String tz = timezone != null && !timezone.isBlank() ? timezone : "America/Sao_Paulo";
-        try {
-            java.time.ZoneId.of(tz);
-        } catch (java.time.zone.ZoneRulesException e) {
-            throw new RegistrationException("invalid_timezone", "Fuso horário inválido: " + tz);
+        if (!java.time.ZoneId.getAvailableZoneIds().contains(tz)) {
+            throw new RegistrationException("invalid_timezone", "Informe um fuso horário IANA válido.");
         }
 
         // 6. Cria as entidades atomicamente

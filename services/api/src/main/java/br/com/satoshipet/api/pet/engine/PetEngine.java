@@ -1,7 +1,7 @@
 package br.com.satoshipet.api.pet.engine;
 
-import br.com.satoshipet.api.account.Address;
 import br.com.satoshipet.api.btc.BitcoinTransaction;
+import br.com.satoshipet.api.btc.AddressMonitorState;
 import br.com.satoshipet.api.btc.LogicalReceipt;
 import br.com.satoshipet.api.outbox.OutboxService;
 import br.com.satoshipet.api.pet.ArtworkStatus;
@@ -159,6 +159,9 @@ public class PetEngine implements PetLifecyclePort {
     public void onBalanceKnown(UUID petId, long confirmedSats, long pendingIncomingSats, Instant when) {
         Objects.requireNonNull(when, "when");
         Pet pet = loadPet(petId);
+        AddressMonitorState state = AddressMonitorState.loadOrCreate(pet.address, when);
+        if (state.balanceCheckedAt != null && when.isBefore(state.balanceCheckedAt)) return;
+        state.recordBalance(confirmedSats, pendingIncomingSats, when);
         PetSnapshot before = snapshot(pet);
         applyKnownBalance(pet, confirmedSats, when);
         emitLifecycle(pet, when, before, true);
@@ -167,8 +170,22 @@ public class PetEngine implements PetLifecyclePort {
     @Override
     @Transactional
     public void onProviderFailure(UUID petId, Instant when) {
-        loadPet(petId);
-        LOG.infof("onProviderFailure no-op petId=%s when=%s", petId, when);
+        Pet pet = loadPet(petId);
+        AddressMonitorState state = AddressMonitorState.loadOrCreate(pet.address, when);
+        if (state.balanceCheckedAt == null || !when.isBefore(state.balanceCheckedAt)) {
+            state.providerAvailable = false;
+        }
+    }
+
+    @Override
+    @Transactional
+    public void onArtworkApproved(UUID petId, Instant now) {
+        Pet pet = loadPet(petId);
+        PetSnapshot before = snapshot(pet);
+        AddressMonitorState.findByAddress(pet.address)
+                .filter(state -> state.isFresh(now) && state.confirmedBalanceSats != null)
+                .ifPresent(state -> applyKnownBalance(pet, state.confirmedBalanceSats, now));
+        emitLifecycle(pet, now, before, true);
     }
 
     @Override
@@ -180,7 +197,12 @@ public class PetEngine implements PetLifecyclePort {
         evaluate(pet, now);
         if (pet.presentation == PetPresentation.CREATURE
                 && pet.bornAt != null
-                && EggPolicy.graceElapsed(pet.zeroBalanceSince, now)) {
+                && EggPolicy.graceElapsed(pet.zeroBalanceSince, now)
+                && AddressMonitorState.findByAddress(pet.address)
+                    .filter(state -> state.providerAvailable && state.confirmedBalanceSats != null
+                            && state.confirmedBalanceSats == 0L
+                            && state.balanceCheckedAt != null && !state.balanceCheckedAt.isBefore(now))
+                    .isPresent()) {
             returnToEgg(pet, now);
         }
         emitLifecycle(pet, now, before, true);
@@ -221,8 +243,10 @@ public class PetEngine implements PetLifecyclePort {
         for (ReplayEvent event : events) {
             replay(pet, event, portionSats);
         }
-        long[] totals = sumAddressSats(pet.address);
-        applyKnownBalance(pet, totals[0], now);
+        replayEligibleFeedings(pet, now);
+        AddressMonitorState.findByAddress(pet.address)
+                .filter(state -> state.isFresh(now) && state.confirmedBalanceSats != null)
+                .ifPresent(state -> applyKnownBalance(pet, state.confirmedBalanceSats, now));
         emitLifecycle(pet, now, before, false);
     }
 
@@ -255,7 +279,7 @@ public class PetEngine implements PetLifecyclePort {
         if (feeding.status != FeedingStatus.VALID) {
             return;
         }
-        creditDelta(pet, feeding.durationHours, effectiveAt);
+        creditDelta(pet, ReserveMath.hoursAdded(feeding.amountSats, feeding.portionSats), feeding.creditEffectiveAt);
         if (effectiveAt.isBefore(pet.createdAt) || feeding.origin == FeedingOrigin.HISTORICAL_RECONSTRUCTION) {
             feeding.presentable = false;
         }
@@ -271,7 +295,8 @@ public class PetEngine implements PetLifecyclePort {
         return LogicalReceipt.findByAddress(pet.address).stream()
                 .filter(receipt -> receipt.confirmedSats > 0L)
                 .map(receipt -> {
-                    BitcoinTransaction tx = byTxid.get(receipt.referenceTxid);
+                    BitcoinTransaction tx = BitcoinTransaction.findCurrentByReceipt(receipt)
+                            .orElse(byTxid.get(receipt.referenceTxid));
                     return new ReplayEvent(receipt, tx, effectiveAt(tx, pet.createdAt));
                 })
                 .sorted(REPLAY_ORDER)
@@ -291,16 +316,6 @@ public class PetEngine implements PetLifecyclePort {
         return petCreatedAt;
     }
 
-    private static long[] sumAddressSats(Address address) {
-        long confirmed = 0L;
-        long pending = 0L;
-        for (LogicalReceipt receipt : LogicalReceipt.findByAddress(address)) {
-            confirmed += receipt.confirmedSats;
-            pending += receipt.pendingSats;
-        }
-        return new long[] {confirmed, pending};
-    }
-
     /**
      * pendingIncomingSats não nasce, não reaparece e não limpa a carência (CA-012 / CC-12).
      */
@@ -308,10 +323,11 @@ public class PetEngine implements PetLifecyclePort {
         evaluate(pet, when);
         pet.zeroBalanceSince = EggPolicy.nextZeroBalanceSince(pet.zeroBalanceSince, confirmedSats, when);
         if (EggPolicy.canAppear(confirmedSats)) {
+            pet.birthFoundationLost = false;
             appear(pet, when);
         } else if (pet.presentation == PetPresentation.CREATURE
                 && pet.bornAt != null
-                && EggPolicy.graceElapsed(pet.zeroBalanceSince, when)) {
+                && (pet.birthFoundationLost || EggPolicy.graceElapsed(pet.zeroBalanceSince, when))) {
             returnToEgg(pet, when);
         }
     }
@@ -333,21 +349,28 @@ public class PetEngine implements PetLifecyclePort {
             boolean confirmed,
             Instant when
     ) {
+        if (amountSats <= 0L) {
+            invalidateExisting(pet, feeding.logicalReceiptId, when);
+            return;
+        }
         if (feeding.status == FeedingStatus.INVALIDATED) {
+            feeding.status = confirmed ? FeedingStatus.VALID : FeedingStatus.PROVISIONAL;
+            feeding.amountSats = amountSats;
+            feeding.presentable = isPresentable(pet, confirmed);
+            feeding.reserveEligible = feeding.reserveEligible || confirmed || feeding.presentable;
+            feeding.durationHours = feeding.reserveEligible
+                    ? ReserveMath.hoursAdded(amountSats, feeding.portionSats) : ZERO_HOURS;
+            feeding.updatedAt = when;
+            replayEligibleFeedings(pet, when);
+            emitFeeding(PET_FEEDING_REVISED, pet, feeding, when);
             return;
         }
         if (feeding.amountSats != amountSats) {
             reviseExisting(pet, feeding, portion, amountSats, when);
-            if (confirmed && feeding.status == FeedingStatus.PROVISIONAL) {
-                confirmExisting(pet, feeding, portion, amountSats, when);
-            }
-            return;
         }
         if (confirmed && feeding.status == FeedingStatus.PROVISIONAL) {
             confirmExisting(pet, feeding, portion, amountSats, when);
-            return;
-        }
-        if (!confirmed && feeding.status == FeedingStatus.VALID) {
+        } else if (!confirmed && feeding.status == FeedingStatus.VALID) {
             demoteValidOnReorg(pet, feeding, when);
         }
     }
@@ -360,11 +383,13 @@ public class PetEngine implements PetLifecyclePort {
             Instant when,
             ResolvedPortion portion
     ) {
+        Instant projectionTime = when.isBefore(pet.lastEvaluatedAt) ? pet.lastEvaluatedAt : when;
+        boolean historical = when.isBefore(pet.createdAt);
         evaluate(pet, when);
         FeedingStatus status = confirmed ? FeedingStatus.VALID : FeedingStatus.PROVISIONAL;
         BigDecimal theoretical = durationFor(pet, status, amountSats, portion.portionSats());
         BigDecimal applied = creditDelta(pet, theoretical, when);
-        boolean presentable = isPresentable(pet, confirmed);
+        boolean presentable = !historical && isPresentable(pet, confirmed);
         PetFeeding feeding = PetFeeding.create(
                 pet,
                 logicalReceiptId,
@@ -373,11 +398,14 @@ public class PetEngine implements PetLifecyclePort {
                 applied,
                 when,
                 status,
-                FeedingOrigin.LIVE,
+                historical ? FeedingOrigin.HISTORICAL_RECONSTRUCTION : FeedingOrigin.LIVE,
                 presentable,
                 when
         );
         feeding.persist();
+        if (when.isBefore(projectionTime)) {
+            replayEligibleFeedings(pet, projectionTime);
+        }
         if (presentable) {
             emitFeeding(PET_FEEDING_APPLIED, pet, feeding, when);
         }
@@ -390,29 +418,29 @@ public class PetEngine implements PetLifecyclePort {
             long amountSats,
             Instant when
     ) {
-        if (feeding.status == FeedingStatus.VALID || feeding.status == FeedingStatus.INVALIDATED) {
+        if (feeding.status == FeedingStatus.INVALIDATED) {
+            handleExistingObservation(pet, feeding, portion, amountSats, true, when);
             return;
         }
+        if (feeding.status == FeedingStatus.VALID) return;
         long oldAmount = feeding.amountSats;
         BigDecimal oldDuration = feeding.durationHours;
         FeedingStatus oldStatus = feeding.status;
         boolean wasPresentable = feeding.presentable;
-        if (pet.presentation == PetPresentation.CREATURE) {
-            feeding.status = FeedingStatus.VALID;
-            feeding.presentable = true;
-            feeding.updatedAt = when;
-            maybeEmitAppliedOrRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
-            return;
-        }
         evaluate(pet, when);
-        BigDecimal oldCredited = creditedHours(pet, feeding);
         feeding.amountSats = amountSats;
         feeding.status = FeedingStatus.VALID;
         feeding.presentable = true;
-        feeding.portionSats = portion.portionSats();
-        BigDecimal theoretical = durationFor(pet, FeedingStatus.VALID, amountSats, feeding.portionSats);
-        BigDecimal appliedDelta = creditDelta(pet, theoretical.subtract(oldCredited), when);
-        feeding.durationHours = oldCredited.add(appliedDelta);
+        if (!feeding.reserveEligible) {
+            feeding.creditEffectiveAt = when;
+            feeding.portionSats = portion.portionSats();
+            feeding.reserveEligible = true;
+            feeding.durationHours = creditDelta(pet,
+                    ReserveMath.hoursAdded(amountSats, feeding.portionSats), when);
+        } else if (oldAmount != amountSats) {
+            feeding.durationHours = ReserveMath.hoursAdded(amountSats, feeding.portionSats);
+            replayEligibleFeedings(pet, when);
+        }
         feeding.updatedAt = when;
         maybeEmitAppliedOrRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
     }
@@ -432,12 +460,11 @@ public class PetEngine implements PetLifecyclePort {
         FeedingStatus oldStatus = feeding.status;
         boolean wasPresentable = feeding.presentable;
         evaluate(pet, when);
-        BigDecimal oldCredited = creditedHours(pet, feeding);
         feeding.amountSats = newAmountSats;
-        BigDecimal theoretical = durationFor(pet, feeding.status, newAmountSats, feeding.portionSats);
-        BigDecimal appliedDelta = creditDelta(pet, theoretical.subtract(oldCredited), when);
-        feeding.durationHours = oldCredited.add(appliedDelta);
+        feeding.durationHours = feeding.reserveEligible
+                ? ReserveMath.hoursAdded(newAmountSats, feeding.portionSats) : ZERO_HOURS;
         feeding.updatedAt = when;
+        replayEligibleFeedings(pet, when);
         maybeEmitAppliedOrRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
     }
 
@@ -449,16 +476,11 @@ public class PetEngine implements PetLifecyclePort {
         PetFeeding feeding = existing.get();
         boolean wasPresentable = feeding.presentable;
         evaluate(pet, when);
-        creditDelta(pet, creditedHours(pet, feeding).negate(), when);
         feeding.status = FeedingStatus.INVALIDATED;
         feeding.presentable = false;
         feeding.updatedAt = when;
-        if (EggPolicy.immediateEggOnLostBirthFoundation(
-                pet.bornAt != null,
-                hasOtherValidFeeding(pet, logicalReceiptId),
-                confirmedSatsExcluding(pet.address, logicalReceiptId))) {
-            returnToEgg(pet, when);
-        }
+        replayEligibleFeedings(pet, when);
+        reconcileLostBirthFoundation(pet, logicalReceiptId, when);
         if (feeding.origin == FeedingOrigin.LIVE && wasPresentable) {
             emitFeeding(PET_FEEDING_INVALIDATED, pet, feeding, when);
         }
@@ -471,7 +493,7 @@ public class PetEngine implements PetLifecyclePort {
         boolean wasPresentable = feeding.presentable;
         evaluate(pet, when);
         if (pet.presentation == PetPresentation.EGG) {
-            creditDelta(pet, feeding.durationHours.negate(), when);
+            feeding.reserveEligible = false;
             feeding.durationHours = ZERO_HOURS;
             feeding.status = FeedingStatus.PROVISIONAL;
             feeding.presentable = false;
@@ -479,12 +501,8 @@ public class PetEngine implements PetLifecyclePort {
             feeding.status = FeedingStatus.PROVISIONAL;
         }
         feeding.updatedAt = when;
-        if (EggPolicy.immediateEggOnLostBirthFoundation(
-                pet.bornAt != null,
-                hasOtherValidFeeding(pet, feeding.logicalReceiptId),
-                confirmedSatsExcluding(pet.address, feeding.logicalReceiptId))) {
-            returnToEgg(pet, when);
-        }
+        replayEligibleFeedings(pet, when);
+        reconcileLostBirthFoundation(pet, feeding.logicalReceiptId, when);
         maybeEmitAppliedOrRevised(pet, feeding, when, oldAmount, oldDuration, oldStatus, wasPresentable);
     }
 
@@ -517,15 +535,12 @@ public class PetEngine implements PetLifecyclePort {
         pet.updatedAt = when;
     }
 
-    private static long confirmedSatsExcluding(Address address, UUID logicalReceiptId) {
-        long confirmed = 0L;
-        for (LogicalReceipt receipt : LogicalReceipt.findByAddress(address)) {
-            if (receipt.id.equals(logicalReceiptId)) {
-                continue;
-            }
-            confirmed += receipt.confirmedSats;
-        }
-        return confirmed;
+    private static void reconcileLostBirthFoundation(Pet pet, UUID receiptId, Instant when) {
+        if (pet.bornAt == null || hasOtherValidFeeding(pet, receiptId)) return;
+        pet.birthFoundationLost = true;
+        AddressMonitorState.findByAddress(pet.address)
+                .filter(state -> state.isFresh(when) && state.confirmedBalanceSats != null)
+                .ifPresent(state -> applyKnownBalance(pet, state.confirmedBalanceSats, when));
     }
 
     private static boolean hasOtherValidFeeding(Pet pet, UUID logicalReceiptId) {
@@ -543,8 +558,26 @@ public class PetEngine implements PetLifecyclePort {
         pet.reserveHours = consumed.remainingHours();
         pet.reserveDepletedAt = consumed.depletedAt();
         pet.lastEvaluatedAt = consumed.evaluatedAt();
-        pet.emotionalState = EmotionalStatePolicy.of(pet.reserveHours, pet.reserveDepletedAt, now);
-        pet.updatedAt = now;
+        pet.emotionalState = EmotionalStatePolicy.of(pet.reserveHours, pet.reserveDepletedAt, consumed.evaluatedAt());
+        pet.updatedAt = consumed.evaluatedAt();
+    }
+
+    /** Reprojeta a reserva sem reescrever o crédito originalmente aplicado sob o teto. */
+    private static void replayEligibleFeedings(Pet pet, Instant now) {
+        List<PetFeeding> feedings = PetFeeding.listByPet(pet).stream()
+                .filter(f -> f.status != FeedingStatus.INVALIDATED)
+                .filter(f -> f.reserveEligible)
+                .sorted(Comparator.comparing((PetFeeding f) -> f.creditEffectiveAt).thenComparing(f -> f.id))
+                .toList();
+        Instant until = now.isBefore(pet.lastEvaluatedAt) ? pet.lastEvaluatedAt : now;
+        pet.reserveHours = ZERO_HOURS;
+        pet.reserveDepletedAt = null;
+        pet.lastEvaluatedAt = feedings.isEmpty() ? pet.createdAt : feedings.getFirst().creditEffectiveAt;
+        for (PetFeeding feeding : feedings) {
+            evaluate(pet, feeding.creditEffectiveAt);
+            creditDelta(pet, ReserveMath.hoursAdded(feeding.amountSats, feeding.portionSats), feeding.creditEffectiveAt);
+        }
+        evaluate(pet, until);
     }
 
     private static BigDecimal creditDelta(Pet pet, BigDecimal delta, Instant now) {
@@ -572,16 +605,6 @@ public class PetEngine implements PetLifecyclePort {
             return ZERO_HOURS;
         }
         return ReserveMath.hoursAdded(amountSats, portionSats);
-    }
-
-    private static BigDecimal creditedHours(Pet pet, PetFeeding feeding) {
-        if (feeding.status == FeedingStatus.INVALIDATED) {
-            return ZERO_HOURS;
-        }
-        if (pet.presentation == PetPresentation.EGG && feeding.status == FeedingStatus.PROVISIONAL) {
-            return ZERO_HOURS;
-        }
-        return feeding.durationHours;
     }
 
     private static boolean isPresentable(Pet pet, boolean confirmed) {
@@ -745,11 +768,6 @@ public class PetEngine implements PetLifecyclePort {
     }
 
     private static Pet loadPet(UUID petId) {
-        Objects.requireNonNull(petId, "petId");
-        Pet pet = Pet.findById(petId);
-        if (pet == null) {
-            throw new IllegalArgumentException("Pet não encontrado: " + petId);
-        }
-        return pet;
+        return Pet.lockForUpdate(petId);
     }
 }

@@ -22,7 +22,6 @@ public class ArtworkGenerationJob {
 
     private final JobLockService jobLockService;
     private final ArtworkPipeline pipeline;
-    private final String ownerId = UUID.randomUUID().toString();
 
     @Inject
     public ArtworkGenerationJob(JobLockService jobLockService, ArtworkPipeline pipeline) {
@@ -33,11 +32,13 @@ public class ArtworkGenerationJob {
     @Scheduled(every = "30s", identity = JOB_NAME)
     public void tick() {
         try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
+            String ownerId = UUID.randomUUID().toString();
             if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
                 return;
             }
             try {
-                pipeline.processReadyWorkloads(Instant.now());
+                pipeline.processReadyWorkloads(Instant.now(), work ->
+                        jobLockService.runWhileOwned(JOB_NAME, ownerId, LOCK_TTL, work));
             } catch (Exception e) {
                 LOG.errorf(e, "Falha no ciclo de geração de arte");
             } finally {

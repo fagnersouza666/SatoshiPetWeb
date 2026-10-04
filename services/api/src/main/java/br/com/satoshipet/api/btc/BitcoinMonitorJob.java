@@ -30,14 +30,11 @@ public class BitcoinMonitorJob {
     /** Nome do lock distribuído para este job. */
     static final String JOB_NAME = "bitcoin-monitor";
 
-    /** TTL do lock — deve ser maior que a duração esperada do ciclo. */
+    /** Janela entre unidades; cada unidade mantém trava até o commit. */
     static final Duration LOCK_TTL = Duration.ofSeconds(120);
 
     private final JobLockService jobLockService;
     private final BitcoinMonitorService monitorService;
-
-    /** Identificador único desta instância da aplicação. */
-    private final String ownerId = UUID.randomUUID().toString();
 
     @Inject
     public BitcoinMonitorJob(JobLockService jobLockService, BitcoinMonitorService monitorService) {
@@ -54,12 +51,13 @@ public class BitcoinMonitorJob {
     @Scheduled(every = "60s", identity = JOB_NAME)
     public void poll() {
         try (CorrelationIdContext.Scope ignored = CorrelationIdContext.openNew()) {
+            String ownerId = UUID.randomUUID().toString();
             if (!jobLockService.acquire(JOB_NAME, ownerId, LOCK_TTL)) {
                 LOG.debugf("Lock do job '%s' detido por outra instância — ciclo ignorado", JOB_NAME);
                 return;
             }
             try {
-                runPollCycle();
+                runPollCycle(ownerId);
             } finally {
                 jobLockService.release(JOB_NAME, ownerId);
             }
@@ -70,7 +68,7 @@ public class BitcoinMonitorJob {
      * Executa o ciclo de polling para todos os endereços ativos.
      * Exposto com visibilidade de pacote para facilitar testes unitários.
      */
-    void runPollCycle() {
+    void runPollCycle(String ownerId) {
         List<Address> addresses = monitorService.getActiveAddresses();
 
         if (addresses.isEmpty()) {
@@ -85,7 +83,11 @@ public class BitcoinMonitorJob {
 
         for (Address address : addresses) {
             try {
-                monitorService.pollAddress(address);
+                if (!jobLockService.runWhileOwned(JOB_NAME, ownerId, LOCK_TTL,
+                        () -> monitorService.pollAddress(address))) {
+                    LOG.infof("Concessão perdida; interrompendo monitoramento Bitcoin");
+                    break;
+                }
                 successCount++;
             } catch (Exception e) {
                 failCount++;

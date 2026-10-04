@@ -55,6 +55,21 @@ public class AddressMonitorState extends PanacheEntityBase {
     @Column(name = "cursor", columnDefinition = "TEXT")
     public String cursor;
 
+    @Column(name = "confirmed_balance_sats")
+    public Long confirmedBalanceSats;
+    @Column(name = "pending_balance_sats")
+    public Long pendingBalanceSats;
+    @Column(name = "balance_checked_at")
+    public Instant balanceCheckedAt;
+    @Column(name = "provider_available", nullable = false)
+    public boolean providerAvailable;
+    @Column(name = "backfill_complete", nullable = false)
+    public boolean backfillComplete;
+    @Column(name = "last_published_confirmed_sats")
+    public Long lastPublishedConfirmedSats;
+    @Column(name = "last_published_pending_sats")
+    public Long lastPublishedPendingSats;
+
     protected AddressMonitorState() {
         // Construtor exigido pelo Hibernate ORM.
     }
@@ -81,5 +96,27 @@ public class AddressMonitorState extends PanacheEntityBase {
     /** Busca o estado do monitor pelo endereço. */
     public static Optional<AddressMonitorState> findByAddress(Address address) {
         return findByIdOptional(address.id);
+    }
+
+    public static AddressMonitorState loadOrCreate(Address address, Instant now) {
+        return findByAddress(address).orElseGet(() -> {
+            AddressMonitorState state = init(address, now);
+            state.persist();
+            return state;
+        });
+    }
+
+    public void recordBalance(long confirmedSats, long pendingSats, Instant now) {
+        if (balanceCheckedAt != null && now.isBefore(balanceCheckedAt)) return;
+        confirmedBalanceSats = confirmedSats;
+        pendingBalanceSats = pendingSats;
+        balanceCheckedAt = now;
+        lastCheckedAt = now;
+        providerAvailable = true;
+    }
+
+    public boolean isFresh(Instant now) {
+        return providerAvailable && balanceCheckedAt != null
+                && !now.isAfter(balanceCheckedAt.plusSeconds(120));
     }
 }

@@ -13,7 +13,9 @@ import java.time.ZonedDateTime;
 public class ArtworkContextBuilder {
 
     public FrozenGenerationContext buildContext(Pet pet, Instant now) {
-        String timezone = pet.creatorAccount.timezone;
+        // Exclusão da conta preserva o pet; o fallback IANA é explícito caso
+        // ainda não exista contexto congelado quando o criador sair.
+        String timezone = pet.creatorAccount == null ? "Etc/UTC" : pet.creatorAccount.timezone;
         ZoneId zone = ZoneId.of(timezone);
         ZonedDateTime local = now.atZone(zone);
         String period = dayPeriod(local.toLocalTime());

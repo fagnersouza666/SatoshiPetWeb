@@ -94,15 +94,15 @@ public class PublicAddressResource {
 
     private PublicAddressResponse buildResponse(Address managed, String canonical, String network) {
         // Busca transações do banco de dados (dados locais, sem chamada externa)
-        List<BitcoinTransaction> txs = BitcoinTransaction.list(
+        List<BitcoinTransaction> txs = BitcoinTransaction.find(
                 "address = ?1 ORDER BY observedAt DESC",
                 managed
-        );
+        ).<BitcoinTransaction>page(0, MAX_HISTORY_SIZE).list();
 
         // Calcula saldos a partir dos recebimentos lógicos persistidos
-        List<LogicalReceipt> receipts = LogicalReceipt.findByAddress(managed);
-        long confirmedSats = receipts.stream().mapToLong(r -> r.confirmedSats).sum();
-        long pendingSats   = receipts.stream().mapToLong(r -> r.pendingSats).sum();
+        AddressMonitorState state = AddressMonitorState.findByAddress(managed).orElse(null);
+        Long confirmedSats = state == null ? null : state.confirmedBalanceSats;
+        Long pendingSats = state == null ? null : state.pendingBalanceSats;
 
         // Mapeia histórico recente (somente campos públicos)
         List<PublicAddressResponse.TransactionSummary> history = txs.stream()
@@ -117,20 +117,19 @@ public class PublicAddressResource {
                 ))
                 .toList();
 
-        PetPublicSnapshot petSnapshot = Pet.findByAddress(managed)
-                .map(pet -> PetPublicSnapshot.from(pet, pendingSats))
-                .orElseGet(PetPublicSnapshot::empty);
+        PetPublicSnapshot petSnapshot = PetPublicSnapshot.fromAddress(managed);
 
         return PublicAddressResponse.of(
                 canonical,
                 network,
                 confirmedSats,
                 pendingSats,
-                txs.size(),
+                BitcoinTransaction.count("address", managed),
                 history,
                 buildQrData(canonical),
                 buildExplorerUrl(canonical, network),
-                petSnapshot
+                petSnapshot,
+                state
         );
     }
 

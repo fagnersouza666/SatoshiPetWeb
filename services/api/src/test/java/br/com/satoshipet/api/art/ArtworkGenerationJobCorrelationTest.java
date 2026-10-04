@@ -39,7 +39,7 @@ class ArtworkGenerationJobCorrelationTest {
             record("work");
             if (failWork) throw new IllegalStateException("falha no processamento");
             return null;
-        }).when(pipeline).processReadyWorkloads(any());
+        }).when(pipeline).processReadyWorkloads(any(), any());
         doAnswer(invocation -> {
             record("release");
             if (failRelease) throw new IllegalStateException("falha na liberação");

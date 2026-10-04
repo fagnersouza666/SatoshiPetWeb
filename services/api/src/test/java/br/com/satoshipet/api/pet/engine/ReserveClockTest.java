@@ -78,7 +78,10 @@ class ReserveClockTest {
 
         assertEquals(hours("10"), consumption.remainingHours());
         assertNull(consumption.depletedAt());
-        assertEquals(now, consumption.evaluatedAt());
+        assertEquals(T0, consumption.evaluatedAt());
+        ReserveClock.Consumption repeated = ReserveClock.consume(
+                consumption.remainingHours(), consumption.evaluatedAt(), consumption.depletedAt(), T0);
+        assertEquals(hours("10"), repeated.remainingHours(), "a mesma hora não pode ser descontada duas vezes");
     }
 
     private static BigDecimal hours(String value) {

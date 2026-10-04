@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BitcoinMonitorServiceTest {
 
     private static final String FIXTURE_ADDR = BitcoinTransactionFixture.ADDRESS.toLowerCase();
-    private static final String RBF_ADDR     = BitcoinRbfFixture.ADDRESS.toLowerCase();
+    private static final String RBF_ADDR     = br.com.satoshipet.api.support.bitcoin.BitcoinTestAddresses.MAINNET_WITH_PET;
     private static final String REORG_ADDR   = BitcoinReorgFixture.ADDRESS.toLowerCase();
 
     @Inject BitcoinMonitorService monitorService;
@@ -217,12 +217,6 @@ class BitcoinMonitorServiceTest {
 
         stub.resetAddress(address.canonical);
         stub.addMempoolTransaction(address.canonical, txInfo(
-                BitcoinRbfFixture.ORIGINAL_TXID,
-                BitcoinRbfFixture.ORIGINAL_RECEIVED_SATS,
-                BitcoinTransaction.Status.REPLACED,
-                BitcoinRbfFixture.ORIGINAL_REPLACED_AT
-        ));
-        stub.addMempoolTransaction(address.canonical, txInfo(
                 BitcoinRbfFixture.REPLACEMENT_TXID,
                 BitcoinRbfFixture.REPLACEMENT_RECEIVED_SATS,
                 BitcoinTransaction.Status.PENDING,
@@ -255,12 +249,12 @@ class BitcoinMonitorServiceTest {
         monitorService.pollAddress(address);
 
         stub.resetAddress(address.canonical);
-        stub.addMempoolTransaction(address.canonical, txInfo(
-                BitcoinRbfFixture.ORIGINAL_TXID,
-                BitcoinRbfFixture.ORIGINAL_RECEIVED_SATS,
-                BitcoinTransaction.Status.REPLACED,
-                BitcoinRbfFixture.ORIGINAL_REPLACED_AT
-        ));
+        var input = new BitcoinIndexerPort.InputInfo("bb".repeat(32), 0);
+        stub.setOutspend(input, new BitcoinIndexerPort.OutspendLookup(true, BitcoinRbfFixture.REPLACEMENT_TXID));
+        stub.setTransactionLookup(address.canonical, BitcoinRbfFixture.REPLACEMENT_TXID,
+                new BitcoinIndexerPort.TransactionLookup(BitcoinIndexerPort.LookupState.FOUND,
+                        txInfo(BitcoinRbfFixture.REPLACEMENT_TXID, 0,
+                                BitcoinTransaction.Status.PENDING, Instant.now())));
         monitorService.pollAddress(address);
 
         LogicalReceipt receipt = LogicalReceipt.findByAddressAndTxid(address, BitcoinRbfFixture.ORIGINAL_TXID)
@@ -471,13 +465,17 @@ class BitcoinMonitorServiceTest {
         List<PetFeeding> feedings = PetFeeding.listByPet(pet);
         assertEquals(1, feedings.size(), "Confirmação não cria segunda alimentação (CA-028)");
         assertEquals(FeedingStatus.VALID, feedings.get(0).status);
-        assertEquals(0, afterConfirm.reserveHours.compareTo(TWENTY_FOUR_HOURS),
+        assertEquals(0, feedings.getFirst().durationHours.compareTo(TWENTY_FOUR_HOURS),
+                "A duração creditada permanece uma porção");
+        assertTrue(afterConfirm.reserveHours.compareTo(TWENTY_FOUR_HOURS) <= 0,
                 "Confirmação da criatura não dobra as horas");
+        assertTrue(afterConfirm.reserveHours.compareTo(new BigDecimal("23")) > 0,
+                "Apenas o tempo efetivamente decorrido entre polls pode ser consumido");
     }
 
     @Test
     @Transactional
-    void rbfInvalidaOriginalECriaAlimentacaoLiveDoSubstituto() {
+    void rbfRevisaMesmaAlimentacaoLiveDoRecebimento() {
         Address address = criarEndereco(RBF_ADDR);
         Pet pet = criarPetComPorcao(address, PetPresentation.CREATURE, PORTION_SATS);
 
@@ -491,12 +489,6 @@ class BitcoinMonitorServiceTest {
 
         stub.resetAddress(address.canonical);
         stub.addMempoolTransaction(address.canonical, txInfo(
-                BitcoinRbfFixture.ORIGINAL_TXID,
-                BitcoinRbfFixture.ORIGINAL_RECEIVED_SATS,
-                BitcoinTransaction.Status.REPLACED,
-                BitcoinRbfFixture.ORIGINAL_REPLACED_AT
-        ));
-        stub.addMempoolTransaction(address.canonical, txInfo(
                 BitcoinRbfFixture.REPLACEMENT_TXID,
                 BitcoinRbfFixture.REPLACEMENT_RECEIVED_SATS,
                 BitcoinTransaction.Status.PENDING,
@@ -505,12 +497,12 @@ class BitcoinMonitorServiceTest {
         monitorService.pollAddress(address);
 
         List<PetFeeding> feedings = PetFeeding.listByPet(pet);
-        assertEquals(2, feedings.size(), "RBF gera INVALIDATED + nova LIVE, sem fundir recibos");
+        assertEquals(1, feedings.size(), "RBF mantém a mesma alimentação lógica");
         long invalidated = feedings.stream().filter(f -> f.status == FeedingStatus.INVALIDATED).count();
         long live = feedings.stream()
                 .filter(f -> f.origin == FeedingOrigin.LIVE && f.status != FeedingStatus.INVALIDATED)
                 .count();
-        assertEquals(1, invalidated);
+        assertEquals(0, invalidated);
         assertEquals(1, live);
         PetFeeding substitute = feedings.stream()
                 .filter(f -> f.status != FeedingStatus.INVALIDATED)
@@ -518,8 +510,9 @@ class BitcoinMonitorServiceTest {
                 .orElseThrow();
         assertEquals(BitcoinRbfFixture.REPLACEMENT_RECEIVED_SATS, substitute.amountSats);
         Pet stored = Pet.findById(pet.id);
-        assertEquals(0, stored.reserveHours.compareTo(substitute.durationHours),
-                "reserva após RBF deve ser as horas do substituto");
+        assertTrue(stored.reserveHours.compareTo(substitute.durationHours) <= 0,
+                "RBF revisa o crédito original sem conceder outra alimentação");
+        assertTrue(stored.reserveHours.compareTo(substitute.durationHours.subtract(BigDecimal.ONE)) > 0);
     }
 
     @Test
@@ -550,12 +543,6 @@ class BitcoinMonitorServiceTest {
         stub.setBalance(address.canonical, new BitcoinIndexerPort.BalanceResult(
                 BitcoinIndexerPort.BalanceState.CONFIRMED, 140_000L, BitcoinRbfFixture.REPLACEMENT_RECEIVED_SATS));
         stub.addMempoolTransaction(address.canonical, txInfo(
-                BitcoinRbfFixture.ORIGINAL_TXID,
-                BitcoinRbfFixture.ORIGINAL_RECEIVED_SATS,
-                BitcoinTransaction.Status.REPLACED,
-                BitcoinRbfFixture.ORIGINAL_REPLACED_AT
-        ));
-        stub.addMempoolTransaction(address.canonical, txInfo(
                 BitcoinRbfFixture.REPLACEMENT_TXID,
                 BitcoinRbfFixture.REPLACEMENT_RECEIVED_SATS,
                 BitcoinTransaction.Status.PENDING,
@@ -564,16 +551,17 @@ class BitcoinMonitorServiceTest {
         monitorService.pollAddress(address);
 
         List<PetFeeding> feedings = PetFeeding.listByPet(pet);
-        assertEquals(3, feedings.size());
+        assertEquals(2, feedings.size());
         long invalidated = feedings.stream().filter(f -> f.status == FeedingStatus.INVALIDATED).count();
         long live = feedings.stream()
                 .filter(f -> f.origin == FeedingOrigin.LIVE && f.status != FeedingStatus.INVALIDATED)
                 .count();
-        assertEquals(1, invalidated);
+        assertEquals(0, invalidated);
         assertEquals(2, live);
         Pet stored = Pet.findById(pet.id);
-        assertEquals(0, stored.reserveHours.compareTo(MAX_RESERVE_HOURS),
-                "RBF do excesso no teto não pode desfazer as 168h já capadas");
+        assertTrue(stored.reserveHours.compareTo(MAX_RESERVE_HOURS) <= 0);
+        assertTrue(stored.reserveHours.compareTo(new BigDecimal("167")) > 0,
+                "RBF do excesso no teto não pode desfazer as horas já capadas");
     }
 
     // -------------------------------------------------------------------------
@@ -638,7 +626,54 @@ class BitcoinMonitorServiceTest {
                 confirmed ? at : null,
                 confirmed ? BitcoinTransactionFixture.BLOCK_HEIGHT : null,
                 confirmed ? BitcoinTransactionFixture.BLOCK_HASH : null,
-                List.of(new BitcoinIndexerPort.OutputInfo(0, "bcrt1qtest", amountSats))
+                amountSats == 0 ? List.of() : List.of(new BitcoinIndexerPort.OutputInfo(0, "bcrt1qtest", amountSats)),
+                txid.equals(BitcoinRbfFixture.ORIGINAL_TXID) || txid.equals(BitcoinRbfFixture.REPLACEMENT_TXID)
+                        ? List.of(new BitcoinIndexerPort.InputInfo("bb".repeat(32), 0)) : List.of()
         );
+    }
+    @Test
+    @Transactional
+    void novaConfirmacaoAntesDoCursorHistoricoEObservada() {
+        Address address = criarEndereco(FIXTURE_ADDR);
+        configureStubConfirmed(address.canonical);
+        monitorService.pollAddress(address);
+        stub.resetAddress(address.canonical);
+        stub.addTransaction(address.canonical, txInfo(CAP_FILLER_TXID, PORTION_SATS,
+                BitcoinTransaction.Status.CONFIRMED, Instant.now()));
+        configureStubConfirmed(address.canonical);
+
+        monitorService.pollAddress(address);
+
+        assertEquals(2, BitcoinTransaction.count("address", address));
+    }
+
+    @Test
+    @Transactional
+    void mesmaTransacaoPodeAlimentarDoisEnderecosMonitorados() {
+        Address first = criarEndereco(FIXTURE_ADDR);
+        Address second = criarEndereco(RBF_ADDR);
+        configureStubConfirmed(first.canonical);
+        configureStubConfirmed(second.canonical);
+
+        monitorService.pollAddress(first);
+        monitorService.pollAddress(second);
+
+        assertEquals(1, LogicalReceipt.findByAddress(first).size());
+        assertEquals(1, LogicalReceipt.findByAddress(second).size());
+    }
+
+    @Test
+    @Transactional
+    void pollIdenticoNaoPublicaOutraReconciliacao() {
+        Address address = criarEndereco(FIXTURE_ADDR);
+        configureStubConfirmed(address.canonical);
+        monitorService.pollAddress(address);
+        long before = br.com.satoshipet.api.outbox.OutboxEvent.count(
+                "eventType", "BITCOIN_BALANCE_RECONCILED");
+
+        monitorService.pollAddress(address);
+
+        assertEquals(before, br.com.satoshipet.api.outbox.OutboxEvent.count(
+                "eventType", "BITCOIN_BALANCE_RECONCILED"));
     }
 }

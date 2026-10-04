@@ -26,6 +26,11 @@ export interface RegisterPayload {
 
 /** Dados públicos de um endereço Bitcoin. */
 export interface PublicAddressInfo {
+  confirmedSats?: number | null;
+  pendingSats?: number | null;
+  balanceKnown?: boolean;
+  balanceFresh?: boolean;
+  balanceCheckedAt?: string | null;
   address: string;
   petName?: string;
   presentation?: 'EGG' | 'CREATURE';

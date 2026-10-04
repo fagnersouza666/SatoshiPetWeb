@@ -9,6 +9,8 @@ import io.restassured.http.ContentType;
 import jakarta.inject.Inject;
 import io.quarkus.narayana.jta.QuarkusTransaction;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.time.Instant;
 
@@ -111,5 +113,17 @@ class RegistrationResourceTest {
                     email, tokenHash, Instant.now(), Instant.now().plusSeconds(900));
             tokenRepository.persist(token);
         });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"America/Sao Paulo", "-03:00", "UTC+03:00", "X", "America/Inexistente"})
+    void rejeitaFusoForaDoCatalogoIanaCom422(String timezone) {
+        String raw = "timezone-" + java.util.UUID.randomUUID();
+        inserirToken(raw + "@test.invalid", raw);
+        given().contentType(ContentType.JSON)
+                .body(java.util.Map.of("token", raw, "bitcoinAddress", VALID_ADDRESS,
+                        "petName", "Pixel", "timezone", timezone))
+                .post("/api/v1/auth/register").then().statusCode(422)
+                .body("code", equalTo("invalid_timezone"));
     }
 }

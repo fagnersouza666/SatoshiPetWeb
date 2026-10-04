@@ -53,6 +53,11 @@ public final class BitcoinTestAddresses {
             ScriptType.P2WPKH
     ).toString();
 
+    public static final String RECONCILIATION_FIRST = Address.fromKey(MainNetParams.get(),
+            ECKey.fromPrivate(hexToBytes("71".repeat(32))), ScriptType.P2WPKH).toString();
+    public static final String RECONCILIATION_SECOND = Address.fromKey(MainNetParams.get(),
+            ECKey.fromPrivate(hexToBytes("72".repeat(32))), ScriptType.P2WPKH).toString();
+
     private BitcoinTestAddresses() {
     }
 

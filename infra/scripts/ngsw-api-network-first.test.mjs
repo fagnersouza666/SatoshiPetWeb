@@ -18,7 +18,7 @@ function readNgswConfig() {
 
 function apiDataGroup() {
   const group = readNgswConfig().dataGroups?.find((candidate) =>
-    candidate.urls?.includes("/api/**"),
+    candidate.urls?.includes("/api/v1/public/**"),
   );
   assert.ok(group, "ngsw-config.json precisa declarar o grupo da API");
   return group;

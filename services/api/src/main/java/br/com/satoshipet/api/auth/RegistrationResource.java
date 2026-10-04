@@ -1,6 +1,7 @@
 package br.com.satoshipet.api.auth;
 
 import br.com.satoshipet.api.account.SessionService;
+import br.com.satoshipet.api.account.SessionCookieFactory;
 import br.com.satoshipet.api.platform.SessionAuthFilter;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
@@ -91,23 +92,18 @@ public class RegistrationResource {
         return Response.status(400).entity(new ErrorBody(code, message)).build();
     }
 
+    @Inject
+    SessionCookieFactory cookies;
+
     private NewCookie buildSessionCookie(String rawToken) {
-        return new NewCookie.Builder(SessionAuthFilter.SESSION_COOKIE)
-                .value(rawToken)
-                .path("/")
-                .httpOnly(true)
-                .secure(false)
-                .sameSite(NewCookie.SameSite.STRICT)
-                .maxAge(60 * 60 * 24 * 30)
-                .build();
+        return cookies.create(rawToken);
     }
 
+    @Inject
+    br.com.satoshipet.api.platform.ClientAddress clientAddress;
+
     private String extractIp(ContainerRequestContext ctx) {
-        String forwarded = ctx.getHeaderString("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return "unknown";
+        return clientAddress.value();
     }
 
     /** Body da requisição de registro. */

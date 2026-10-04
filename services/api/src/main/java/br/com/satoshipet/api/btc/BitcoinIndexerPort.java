@@ -47,6 +47,22 @@ public interface BitcoinIndexerPort {
      */
     record OutputInfo(int vout, String address, long amountSats) {}
 
+    /** Outpoint consumido: evidência de conflito, nunca endereço/valor. */
+    record InputInfo(String txid, int vout) {}
+
+    enum LookupState { FOUND, MISSING, UNAVAILABLE }
+    record TransactionLookup(LookupState state, TransactionInfo transaction) {}
+    /** available=false inclui 404: ausência do prevout não prova descarte. */
+    record OutspendLookup(boolean available, String spendingTxid) {}
+
+    default TransactionLookup getTransaction(String canonical, String txid) {
+        return new TransactionLookup(LookupState.MISSING, null);
+    }
+
+    default OutspendLookup getOutspend(InputInfo input) {
+        return new OutspendLookup(false, null);
+    }
+
     /**
      * Informações de uma transação retornadas pelo indexador.
      *
@@ -67,10 +83,17 @@ public interface BitcoinIndexerPort {
             Instant confirmedAt,
             Integer blockHeight,
             String blockHash,
-            List<OutputInfo> outputs
+            List<OutputInfo> outputs,
+            List<InputInfo> inputs
     ) {
         public TransactionInfo {
             outputs = outputs == null ? List.of() : List.copyOf(outputs);
+            inputs = inputs == null ? List.of() : List.copyOf(inputs);
+        }
+        public TransactionInfo(String txid, long amountSats, BitcoinTransaction.Status status,
+                Instant observedAt, Instant confirmedAt, Integer blockHeight, String blockHash,
+                List<OutputInfo> outputs) {
+            this(txid, amountSats, status, observedAt, confirmedAt, blockHeight, blockHash, outputs, List.of());
         }
     }
 
@@ -92,6 +115,19 @@ public interface BitcoinIndexerPort {
      * @return lista de transações confirmadas
      */
     List<TransactionInfo> getTransactions(String canonical, String cursor, int limit);
+
+    /** Página vazia bem-sucedida encerra histórico; falha mantém cursor para retry. */
+    record TransactionPage(List<TransactionInfo> transactions, boolean available) {
+        public TransactionPage { transactions = List.copyOf(transactions); }
+    }
+
+    default TransactionPage getTransactionPage(String canonical, String cursor, int limit) {
+        return new TransactionPage(getTransactions(canonical, cursor, limit), true);
+    }
+
+    default TransactionPage getMempoolPage(String canonical) {
+        return new TransactionPage(getMempool(canonical), true);
+    }
 
     /**
      * Retorna transações pendentes na mempool para o endereço.

@@ -37,7 +37,7 @@ class PetTickJobCorrelationTest {
             record("work");
             if (failWork) throw new IllegalStateException("falha no processamento");
             return null;
-        }).when(job).runTickCycle();
+        }).when(job).runTickCycle(anyString());
         doAnswer(invocation -> {
             record("release");
             if (failRelease) throw new IllegalStateException("falha na liberação");

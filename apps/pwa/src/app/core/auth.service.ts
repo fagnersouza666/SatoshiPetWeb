@@ -38,6 +38,16 @@ export class AuthService {
   } | null = null;
   readonly pendingVerify = this._pendingVerify.asReadonly();
 
+  /** Restaura cookie/CSRF antes da primeira navegação, sem cache de identidade. */
+  async restoreSession(): Promise<void> {
+    try {
+      const account = await firstValueFrom(this.loadAccount());
+      this.session.setSession(account);
+    } catch {
+      // Offline/expiração não autoriza inferir identidade a partir de cache.
+    }
+  }
+
   requestMagicLink(email: string): Observable<void> {
     return this.api.post<void>('/v1/auth/magic-link', { email });
   }
@@ -58,6 +68,7 @@ export class AuthService {
     } else {
       this.pendingSession = { flow: 'verify', credential: token, verified: result };
       this.session.clearSession();
+      void this.privateCache.clearPrivateCaches();
       await this.openAccount();
     }
     return result;
@@ -87,20 +98,32 @@ export class AuthService {
           this.registrationToken = null;
           this.pendingSession = { flow: 'register' };
           this.session.clearSession();
+          void this.privateCache.clearPrivateCaches();
         }),
         switchMap(() => this.loadAccount()),
       );
   }
 
-  async recoverAndNavigate(code: string): Promise<void> {
-    if (this.pendingSession?.flow !== 'recover' || this.pendingSession.credential !== code) {
-      await firstValueFrom(
-        this.api.post<{ status: string }>('/v1/account/recovery/reset', { code }),
-      );
-      this.pendingSession = { flow: 'recover', credential: code };
-      this.clearPendingRegistration();
-      this.session.clearSession();
-    }
+  async requestRecoveryEmail(code: string, email: string): Promise<void> {
+    await firstValueFrom(this.api.post<void>('/v1/account/recovery/email', { code, email }));
+  }
+
+  /** Devolve o novo código uma única vez para o usuário guardá-lo antes de navegar. */
+  async recoverAccess(code: string, token: string): Promise<string> {
+    const result = await firstValueFrom(
+      this.api.post<{ status: string; recoveryCode: string }>('/v1/account/recovery/reset', {
+        code,
+        token,
+      }),
+    );
+    this.pendingSession = { flow: 'recover' };
+    this.clearPendingRegistration();
+    this.session.clearSession();
+    void this.privateCache.clearPrivateCaches();
+    return result.recoveryCode;
+  }
+
+  async openRecoveredAccount(): Promise<void> {
     await this.openAccount();
   }
 
