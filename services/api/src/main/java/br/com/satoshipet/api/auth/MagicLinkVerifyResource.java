@@ -1,13 +1,13 @@
 package br.com.satoshipet.api.auth;
 
 import br.com.satoshipet.api.account.Account;
+import br.com.satoshipet.api.account.AccountMutationLock;
 import br.com.satoshipet.api.account.MagicLinkToken;
 import br.com.satoshipet.api.account.MagicLinkTokenService;
-import br.com.satoshipet.api.account.Session;
 import br.com.satoshipet.api.account.SessionService;
 import br.com.satoshipet.api.account.SessionCookieFactory;
-import br.com.satoshipet.api.platform.SessionAuthFilter;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -58,16 +58,19 @@ public class MagicLinkVerifyResource {
      * @return 200 com resultado da verificação, ou 401 opaco
      */
     @POST
+    @Transactional
     public Response verify(VerifyRequest body, @Context ContainerRequestContext ctx) {
         if (body == null || body.token() == null || body.token().isBlank()) {
             return unauthorizedOpaque();
         }
 
+        // Mesmo ponto de serialização de cadastro, recuperação e exclusão.
+        // Consumo do link e criação da sessão participam desta transação.
+        AccountMutationLock.acquire();
         Instant now = Instant.now();
         String rawToken = body.token();
 
         // Verifica se o token é válido (sem consumir ainda)
-        String tokenHash = hash(rawToken);
         Optional<br.com.satoshipet.api.account.MagicLinkToken> candidate = tokenService.peekByRawToken(rawToken, now);
 
         if (candidate.isEmpty()) {
@@ -102,20 +105,9 @@ public class MagicLinkVerifyResource {
 
         return Response.ok(new VerifyResponse("ok", false, email))
                 .cookie(sessionCookie)
+                .header("Cache-Control", "no-store")
                 .header("X-CSRF-Token", creation.rawCsrfToken())
                 .build();
-    }
-
-    /** Gera o hash SHA-256 do token (apenas para verificação prévia via peek). */
-    private String hash(String rawToken) {
-        try {
-            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
-            return java.util.HexFormat.of().formatHex(
-                    digest.digest(rawToken.getBytes(java.nio.charset.StandardCharsets.UTF_8))
-            );
-        } catch (Exception e) {
-            throw new IllegalStateException("SHA-256 indisponível", e);
-        }
     }
 
     private Response unauthorizedOpaque() {
