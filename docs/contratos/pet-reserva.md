@@ -2,7 +2,7 @@
 
 Referências: PRD §9.3, CC-10/11/14, CA-015..018; BUG-009/023.
 
-- O relógio persistido é monotônico: avaliação anterior a `lastEvaluatedAt` não retrocede o cursor nem desconta novamente o mesmo intervalo.
+- O relógio persistido é monotônico: avaliação anterior a `lastEvaluatedAt` não retrocede o cursor nem desconta novamente o mesmo intervalo. A reconstrução preserva esse instante antes de percorrer o histórico, e `updatedAt` nunca antecede a criação do pet.
 - Invalidação ou alteração de um recebimento recompõe a reserva em ordem de aplicação, usando sats e porção congelada de cada alimentação elegível. O teto de 168h é aplicado em cada etapa, com consumo do tempo entre elas.
 - Um recebimento limitado a zero pelo teto pode contribuir para a reserva recalculada se uma alimentação anterior for invalidada. Seu crédito originalmente aplicado permanece no histórico.
 - Uma alimentação antiga já consumida não é subtraída diretamente da energia de outra alimentação posterior.

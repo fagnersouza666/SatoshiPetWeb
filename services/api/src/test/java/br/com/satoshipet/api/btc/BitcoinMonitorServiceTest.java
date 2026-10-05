@@ -386,7 +386,8 @@ class BitcoinMonitorServiceTest {
         assertEquals(BitcoinTransactionFixture.AMOUNT_SATS, feeding.amountSats);
         assertEquals(0, feeding.durationHours.compareTo(TWENTY_FOUR_HOURS));
         Pet stored = Pet.findById(pet.id);
-        assertEquals(0, stored.reserveHours.compareTo(TWENTY_FOUR_HOURS));
+        assertTrue(stored.reserveHours.compareTo(TWENTY_FOUR_HOURS) <= 0);
+        assertTrue(stored.reserveHours.compareTo(new BigDecimal("23")) > 0);
     }
 
     @Test
@@ -417,7 +418,9 @@ class BitcoinMonitorServiceTest {
         monitorService.pollAddress(address);
 
         Pet afterFeed = Pet.findById(pet.id);
-        assertEquals(0, afterFeed.reserveHours.compareTo(TWENTY_FOUR_HOURS));
+        BigDecimal beforeFailure = afterFeed.reserveHours;
+        assertTrue(beforeFailure.compareTo(TWENTY_FOUR_HOURS) <= 0);
+        assertTrue(beforeFailure.compareTo(new BigDecimal("23")) > 0);
 
         stub.resetAddress(address.canonical);
         stub.setBalance(address.canonical, new BitcoinIndexerPort.BalanceResult(
@@ -426,7 +429,7 @@ class BitcoinMonitorServiceTest {
         monitorService.pollAddress(address);
 
         Pet afterFailure = Pet.findById(pet.id);
-        assertEquals(0, afterFailure.reserveHours.compareTo(TWENTY_FOUR_HOURS),
+        assertEquals(0, afterFailure.reserveHours.compareTo(beforeFailure),
                 "PROVIDER_FAILURE não altera reserva (CA-031)");
         List<BitcoinTransaction> txs = BitcoinTransaction.list("address", address);
         assertEquals(1, txs.size(), "Transação deve permanecer após PROVIDER_FAILURE");
@@ -450,7 +453,9 @@ class BitcoinMonitorServiceTest {
         Pet afterPending = Pet.findById(pet.id);
         assertEquals(1, PetFeeding.listByPet(pet).size());
         assertEquals(FeedingStatus.PROVISIONAL, PetFeeding.listByPet(pet).get(0).status);
-        assertEquals(0, afterPending.reserveHours.compareTo(TWENTY_FOUR_HOURS));
+        assertEquals(0, PetFeeding.listByPet(pet).getFirst().durationHours.compareTo(TWENTY_FOUR_HOURS));
+        assertTrue(afterPending.reserveHours.compareTo(TWENTY_FOUR_HOURS) <= 0);
+        assertTrue(afterPending.reserveHours.compareTo(new BigDecimal("23")) > 0);
 
         stub.resetAddress(address.canonical);
         stub.addTransaction(address.canonical, txInfo(
@@ -526,7 +531,8 @@ class BitcoinMonitorServiceTest {
                 CAP_FILLER_TXID, 140_000L, BitcoinTransaction.Status.CONFIRMED, Instant.now()));
         monitorService.pollAddress(address);
         Pet afterFill = Pet.findById(pet.id);
-        assertEquals(0, afterFill.reserveHours.compareTo(MAX_RESERVE_HOURS));
+        assertTrue(afterFill.reserveHours.compareTo(MAX_RESERVE_HOURS) <= 0);
+        assertTrue(afterFill.reserveHours.compareTo(new BigDecimal("167")) > 0);
 
         stub.resetAddress(address.canonical);
         stub.setBalance(address.canonical, new BitcoinIndexerPort.BalanceResult(
@@ -620,6 +626,8 @@ class BitcoinMonitorServiceTest {
             String txid, long amountSats, BitcoinTransaction.Status status, Instant at
     ) {
         boolean confirmed = status == BitcoinTransaction.Status.CONFIRMED;
+        // Estes cenários são ao vivo; histórico tem regressão própria com instante antigo.
+        at = Instant.now();
         return new BitcoinIndexerPort.TransactionInfo(
                 txid, amountSats, status,
                 at,

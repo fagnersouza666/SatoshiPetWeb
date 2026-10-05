@@ -114,4 +114,22 @@ describe('ApiClientService: sessão e CSRF', () => {
     expect(failure).toBeInstanceOf(Error);
     expect((failure as { status?: number }).status).not.toBe(401);
   });
+
+  it('emissão autenticada de código tem no-store e descarta resposta de outra identidade', () => {
+    const session = TestBed.inject(SessionService);
+    session.setSession({ id: 'A', email: 'a@example.invalid' });
+    let received: unknown;
+    let failure: unknown;
+    api.post('/v1/account/recovery/code', {}).subscribe({
+      next: (value) => (received = value),
+      error: (error) => (failure = error),
+    });
+    const previous = http.expectOne('/api/v1/account/recovery/code');
+    const cache = previous.request.cache;
+    session.setSession({ id: 'B', email: 'b@example.invalid' });
+    previous.flush({ code: 'secret-from-A' });
+    expect(cache).toBe('no-store');
+    expect(received).toBeUndefined();
+    expect(failure).toBeInstanceOf(Error);
+  });
 });

@@ -8,7 +8,7 @@
 | [backlog/README.md](./backlog/README.md) | Backlog de implementação — índice, convenções e ordem de entrega |
 | [../AGENTS.md](../AGENTS.md) | Guia para agentes de IA — stack, invariantes e convenções do projeto |
 | [operacao/tls.md](./operacao/tls.md) | Perfis TLS staging/prod e contrato com o proxy/ingress |
-| [bug-report.md](./bug-report.md) | Auditoria de bugs do projeto (04/10/2026): evidências, correções propostas e limites da validação |
+| [bug-report.md](./bug-report.md) | Auditoria de bugs do projeto (04/10/2026): evidências, correções em 1.9.2 e limites da validação |
 
 ## Contratos
 
@@ -16,6 +16,8 @@
 |-----------|-----------|
 | [contratos/magic-link.md](./contratos/magic-link.md) | Solicitação de magic link (`POST /auth/magic-link`) |
 | [contratos/magic-link-verify.md](./contratos/magic-link-verify.md) | Verificação do token e decisão registro vs sessão |
+| [contratos/conta-ciclo-de-vida.md](./contratos/conta-ciclo-de-vida.md) | Recuperação, endereço e exclusão privada |
+| [contratos/jobs-concorrencia.md](./contratos/jobs-concorrencia.md) | Concessão por invocação e unidade transacional |
 | [contratos/sessao-csrf.md](./contratos/sessao-csrf.md) | Cookie `sp_session`, header CSRF e revogação |
 | [contratos/websocket-endereco.md](./contratos/websocket-endereco.md) | Canal WS por endereço — snapshot, cursor e RECONNECT |
 | [contratos/bitcoin-indexer-port.md](./contratos/bitcoin-indexer-port.md) | Porta de indexador on-chain (Esplora/stub) |
@@ -94,6 +96,3 @@ Os comandos abaixo devem ser executados na raiz do repositório:
 | `npm run versao -- verificar` | Falha se as três versões divergirem |
 | `npm run check:pwa` | Prova local da PWA (`versao verificar` + testes) |
 | `npm run check:api` | Prova local da API (`versao verificar` + `mvnw verify`; exige Docker) |
-
-- [Execução exclusiva de jobs](contratos/jobs-concorrencia.md) — concessão por invocação e unidade transacional.
-- [Ciclo de vida da conta](contratos/conta-ciclo-de-vida.md) — recuperação, endereço e exclusão privada.

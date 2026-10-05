@@ -71,7 +71,7 @@ O contrato de solicitação está em [docs/contratos/magic-link.md](../contratos
 **Regras de negócio:** §4.3, **CC-02**  
 **Critérios de aceite:** CA-006  
 **Dependências:** CONTA-02  
-**Notas técnicas:** Nunca logar o segredo; renovar código após uso.
+**Notas técnicas:** Nunca logar o segredo; renovar código após uso. A tela de conta permite gerar, copiar e baixar o código, mantido apenas em memória até sair ou trocar de identidade. Ver [contrato da PWA](../contratos/pwa-recuperacao.md).
 
 ---
 
@@ -82,7 +82,7 @@ O contrato de solicitação está em [docs/contratos/magic-link.md](../contratos
 **Regras de negócio:** §4.3, **CC-02**  
 **Critérios de aceite:** CA-006  
 **Dependências:** CONTA-05  
-**Notas técnicas:** Preservar `addressChangeDeadline` original.
+**Notas técnicas:** Preservar `addressChangeDeadline` original. Novo e-mail é verificado antes da troca atômica; sessões antigas são revogadas e um código novo é emitido. Verificação de magic link e recuperação compartilham a trava para impedir sessão tardia do e-mail anterior. Ver [ciclo de vida da conta](../contratos/conta-ciclo-de-vida.md).
 
 ---
 

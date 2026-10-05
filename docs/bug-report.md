@@ -1,7 +1,7 @@
 # Bug Report — Satoshi Pet Web
 
 > Baseline da auditoria: 04/10/2026 | Versão: 1.9.1 | Revisão: `8f05612`
-> Correções em andamento: 1.9.2 (API 1.9.2-SNAPSHOT), ainda sem commit. Ver plano e validação abaixo.
+> Correções aplicadas: 1.9.2 (API 1.9.2-SNAPSHOT), sem commit. Ver resultado e limites da validação abaixo.
 > Stack: Angular 22.1 / TypeScript 6 / Java 25 / Quarkus 3.33.3.2 / PostgreSQL 18 / Docker
 > Modo: **full** — PWA, API, persistência, eventos, jobs, integrações e infraestrutura.
 > Arquivos analisados por varredura: **322**; inventário: **426 arquivos versionados**. Leitura contextual dos fluxos detalhada abaixo.
@@ -18,18 +18,86 @@
 
 **Veredicto: BLOQUEADO.** Há defeitos na configuração de implantação, no acompanhamento Bitcoin, na reserva do pet e na jornada de autenticação/arte. O veredicto descreve esta revisão do código e das configurações, não uma tentativa de implantação em produção.
 
-Os trechos, localizações e diagnósticos abaixo preservam a auditoria inicial. As correções posteriores estão sendo aplicadas no código, com regressões e migrations V8–V12. O veredicto acima descreve o baseline, não o resultado ainda pendente da rodada de correção. Os IDs anteriores foram preservados; BUG-001 permanece no histórico.
+Os trechos, localizações e diagnósticos abaixo preservam a auditoria inicial. As correções posteriores estão sendo aplicadas no código, com regressões e migrations V8–V12. O veredicto acima descreve o baseline; o resultado das correções está na seção seguinte. Os IDs anteriores foram preservados; BUG-001 permanece no histórico.
 
-## Acompanhamento das correções
+## Resultado das correções — versão 1.9.2
 
-[Plano de execução e evidências](superpowers/plans/2026-10-04-correcao-auditoria.md). A versão foi incrementada uma única vez pelo script para **1.9.2**. A consolidação por ocorrência será concluída após os testes e a revisão independente; nenhum teste bloqueado pelo ambiente será registrado como aprovado.
+**As 29 ocorrências identificadas foram corrigidas no código, e os seis pontos complementares foram tratados.** A revisão independente também encontrou e corrigiu a corrida entre recuperação e login pelo e-mail anterior, a primeira emissão do código de recuperação na PWA, a restauração tardia de crédito e a reconstrução com horário antigo. Não houve commit, publicação ou envio de fundos.
 
-Já foram reproduzidos testes vermelhos para cursor, saldo público, contas, replay da reserva, concorrência do pet, replay WebSocket e contratos reais do Esplora. A implementação inclui isolamento de identidade na PWA, recuperação com verificação de novo e-mail, exclusão efetiva dos dados privados, snapshot de saldo líquido, vínculo lógico por entradas Bitcoin, projeção durável de eventos e execução de jobs protegida por transação.
+### Validação final
 
-Os testes iniciais da PWA (127), os seis contratos de implantação e os primeiros lotes de domínio passaram; uma nova rodada integrada verifica as mudanças adicionais. A validação de PostgreSQL/regtest, transporte HTTP/WebSocket real e navegador com service worker continua sujeita à disponibilidade do ambiente.
+| Verificação | Resultado |
+|---|---|
+| API: testes `*Test` sem dependência de HTTP/Docker, com CDI/H2 quando aplicável | **472 passaram; zero falhas, erros ou ignorados** |
+| PWA: suíte completa | **135 testes passaram**, 20 arquivos |
+| PWA: build de produção | Passou |
+| Infra: configuração consolidada pelo Docker Compose CLI e bootstrap MinIO | **6 contratos passaram**; bootstrap idempotente passou |
+| Contratos de cache/arte do service worker e CSP | Passaram |
+| Script de versão e coerência PWA/API/raiz | Passaram; **1.9.2 / 1.9.2-SNAPSHOT** |
+| Revisão independente | Conta/autenticação e pet/tempo real revisados; achados materiais corrigidos e testados |
+| Gate oficial `check:pwa` | Testes/build passaram; smoke instalável bloqueado por `listen EPERM 127.0.0.1` |
+| Gate oficial `check:api` | Versão passou; parou por Docker indisponível |
 
+A seleção da API excluiu explicitamente `HealthResourceTest`, `GreetingResourceTest`, `PwaAuthContractTest`, `CorsOriginTest`, `MetricsResourceTest`, `AddressWebSocketTest`, `PetAccountResourceTest`, `RecoveryContractTest`, `MinioObjectStorageTest`, `RegistrationResourceTest`, `MagicLinkResourceTest`, `MagicLinkVerifyResourceTest`, `JobLockServicePostgreSqlTest` e `PublicAddressResourceTest`. O comando usou `-Dquarkus.http.host-enabled=false` e `-Dtest=*Test` com essas exclusões. Recursos públicos/privados e serviços alterados também têm testes CDI diretos, sem transporte HTTP. Testes `*IT` não integram esse resultado.
 
-## Método, cobertura e limites
+A integração com **PostgreSQL/regtest/MinIO**, transporte real **HTTP/WebSocket/SMTP**, instalação em navegador com **service worker** e execução de **Caddy/nginx/TLS** continuam sem prova neste ambiente. Não foi realizado ensaio prolongado de carga nem medição de capacidade. Os gates normais permanecem exigidos antes da implantação.
+
+Evidência da sessão: `/tmp/satoshi-api-wide-final.log`, `/tmp/satoshi-pwa-official-gate.log`, `/tmp/pwa-recovery-full-green.log`, `/tmp/pwa-recovery-build.log`, `/tmp/satoshi-infra-final.log`, `/tmp/satoshi-ngsw-final.log`, `/tmp/satoshi-version-tests.log` e `/tmp/satoshi-api-official-gate.log`. Esses logs são temporários; os testes e contratos citados abaixo estão no repositório.
+
+### Matriz por ocorrência
+
+Todos os itens desta matriz têm correção aplicada e cenário automatizado aprovado na validação local acima. Contratos de configuração comprovam os arquivos consolidados, sem afirmar que a infraestrutura foi iniciada.
+
+| ID | Correção | Regressão principal |
+|---|---|---|
+| BUG-002 | Reconciliação publica somente mudança de saldo | `BitcoinMonitorServiceTest.pollIdenticoNaoPublicaOutraReconciliacao` |
+| BUG-003 | Volume no diretório pai usado pelo PostgreSQL 18 | `deployment-config.test.mjs` |
+| BUG-004 | Expansão do domínio antes do parsing do Caddy | `deployment-config.test.mjs` |
+| BUG-005 | Cabeça e backfill separados; lote parcial não avança cursor | `BitcoinMonitorServiceTest`, `BitcoinReconciliationTest` (>25 confirmações e falha na segunda página) |
+| BUG-006 | Unicidade por endereço/txid; reorg alcança todos os endereços | `BitcoinMonitorServiceTest.mesmaTransacaoPodeAlimentarDoisEnderecosMonitorados`, `BitcoinReconciliationTest` |
+| BUG-007 | Saldo líquido reconciliado; desconhecido e desatualizado explícitos | `PublicBalanceProjectionTest`, `BitcoinReconciliationTest`, `endereco.component.spec.ts` |
+| BUG-008 | Inputs/outspends/status reais; RBF mantém o recebimento e a alimentação | `EsploraBitcoinIndexerTest` (5), `BitcoinReconciliationTest` (12) |
+| BUG-009 | Replay cronológico com teto, consumo e porção congelada | `PetEngineTest` (25), `PetEngineReconstructTest` (6) |
+| BUG-010 | Escritores do pet usam trava e releitura comuns | `PetConcurrencyRegressionTest`, corridas de `ArtworkPipelineTest` |
+| BUG-011 | Bootstrap restaura identidade e CSRF sem cache | `AccountLifecycleRegressionTest`, `auth.service.spec.ts` |
+| BUG-012 | Renomeação transacional, relida em outra transação | `AccountLifecycleRegressionTest.renamePersisteEntreRequests` |
+| BUG-013 | Troca cria ou recupera o pet do endereço destino | `AccountAddressChangeServiceTest` |
+| BUG-014 | Recuperação e login serializados; consumo único | `RecoveryServiceRegressionTest`, `MagicLinkRecoveryRaceTest` |
+| BUG-015 | Exclusão remove privados e mantém pet; diário reaplicável após restauração | `AccountLifecycleRegressionTest`, `AccountPrivacyRestoreTest` |
+| BUG-016 | Prévia privada renderiza a criatura para aprovação | `pet-artwork-panel.component.spec.ts` |
+| BUG-017 | DTO público inclui atlas/versão somente após aprovação | `PublicBalanceProjectionTest.respostaPublicaExpoeSomenteAtlasDaArteAprovada` |
+| BUG-018 | Eventos atualizam a tela; reconexão e cursor preservados | `address-websocket.service.spec.ts`, `endereco.component.spec.ts` |
+| BUG-019 | Arte aguardando aprovador ausente é reconciliada sem nova geração | `ArtworkPipelineTest` |
+| BUG-020 | Reaprovação idempotente e apresentação dependente de saldo conhecido | `ArtworkPipelineTest`, `PetEngineEggTest` |
+| BUG-021 | URL pública de magic link injetada em produção | `deployment-config.test.mjs` |
+| BUG-022 | nginx encaminha PNG da API e upgrade WebSocket corretamente | `deployment-config.test.mjs` |
+| BUG-023 | Relógio e reconstrução não retrocedem o instante já avaliado | `ReserveClockTest`, `PetEngineTest.reconstrucaoComHorarioAntigoPreservaWatermarkDoRelogio` |
+| BUG-024 | Replay ordenado, interrupção em falha e snapshot para cursor inválido | `AddressWebSocketReplayRegressionTest`, `RealtimeEventCursorServiceTest` |
+| BUG-025 | Cookie centralizado com `Secure` e política explícita para HTTP local | `SessionCookieFactoryTest` |
+| BUG-026 | Recibo durável por evento substitui mapas ilimitados no heap | `RealtimeEventCursorServiceTest`, `OutboxWebSocketIntegrationTest` |
+| BUG-027 | Cadastro valida zona IANA e rejeita offsets/valores malformados | `RegistrationServiceTest` |
+| BUG-028 | Allowlist chega à API; header isolado não altera identidade do limiter | `deployment-config.test.mjs`, `RateLimitFilterTest` |
+| BUG-029 | Produção fornece as variáveis efetivamente consumidas pelo adaptador S3 | `deployment-config.test.mjs` |
+| BUG-030 | Auxiliares locais restritos ao perfil dev | `deployment-config.test.mjs` |
+
+| Ponto complementar | Tratamento e regressão |
+|---|---|
+| 1 — cache entre identidades | Endpoints privados fora do cache SW, bypass, revisão de identidade e descarte de respostas antigas; `api-client.service.spec.ts`, `auth.service.spec.ts`, contratos `ngsw-*` |
+| 2 — aprovação/regeneração concorrentes | Ordem de trava pet → arte; dois sentidos da corrida em `ArtworkPipelineTest` |
+| 3 — indisponibilidade durante carência | Conclusão exige reconciliação; resposta antiga não sobrescreve saldo novo; `PetEngineEggTest` |
+| 4 — recuperação completa | Emissão/cópia/download na conta, novo e-mail verificado, novo código, sessões revogadas e prazo preservado; `RecoveryServiceRegressionTest`, `MagicLinkRecoveryRaceTest` e specs de recuperação da PWA |
+| 5 — retenção, paginação e leases | Limpeza do rate limit, histórico SQL limitado a20 com contagem total, proprietário por invocação e transação por unidade; `RateLimitFilterTest`, `PublicBalanceProjectionTest`, `JobLeaseWorkTest`, testes dos jobs e `OutboxLeaseRegressionTest` |
+| 6 — Bech32 maiúsculo | UI aceita caixa uniforme e rejeita mistura; `cadastro.component.spec.ts` |
+
+### Persistência e limites de migração
+
+V8–V12 registram saldo/cursor Bitcoin, privacidade/recuperação, recibos de tempo real, entradas e vínculo de transações e histórico do crédito alimentar. A V12 conserva os valores disponíveis nas linhas legadas; valores originais sobrescritos por versões antigas não podem ser recuperados por inferência. Novos snapshots originais são preservados a partir desta versão.
+
+A retenção dos recibos de tempo real acompanha a outbox: foi removido o crescimento ilimitado de mapas no heap, sem alegar histórico ilimitado gratuito no banco. O relógio global serializa a visibilidade dos cursores; capacidade sob carga precisa ser medida no ambiente de implantação.
+
+Arquivos e decisões detalhados: [plano executado](superpowers/plans/2026-10-04-correcao-auditoria.md), [reserva do pet](contratos/pet-reserva.md), [ciclo de vida da conta](contratos/conta-ciclo-de-vida.md), [jobs](contratos/jobs-concorrencia.md), [Bitcoin](contratos/bitcoin-indexer-port.md) e [WebSocket](contratos/websocket-endereco.md).
+
+## Método, cobertura e limites da auditoria inicial
 
 - Executadas as dez categorias SCAN-01..SCAN-10 da skill `bug-detector`, adaptadas a Java, TypeScript, SQL, scripts e configurações. Os matches foram usados como pistas, não como diagnóstico automático. Os números incluem testes: null/acesso 2.082; erros 85; concorrência 663; recursos 46; consultas/loops 84; lógica 288; persistência 366; configuração 27; frontend 44; APIs 191.
 - Leitura contextual de conta/autenticação/filtros, monitor Esplora, motor/porções/apresentação do pet, geração/aprovação de arte, outbox/WebSocket, storage, migrations V1–V7, fontes da PWA, Compose/Caddy/nginx, scripts e testes relacionados. PRD, CC, critérios e contratos foram cruzados com o comportamento implementado.
@@ -840,4 +908,4 @@ Cada correção comportamental deve ter regressão significativa e documentaçã
 
 - **12/09/2026 — BUG-001:** relatório anterior registrou ajuste da regex de comprimento de endereço Bitcoin no cadastro como corrigido. Esse registro histórico não é uma nova validação criptográfica de endereços nem uma nova ocorrência em aberto.
 - **12/09/2026 — correções declaradas anteriores:** reutilização de pet no cadastro compartilhado, reativação de vínculo histórico na troca, ligação de `MAGIC_LINK_TTL` ao Compose e melhorias de fixtures/correlation ID. Os registros foram preservados; não significam cobertura de concorrência ou criação de pet durante troca para endereço novo.
-- **BUG-002:** evento de reconciliação em todos os polls permanece aberto, com evidência atual e relação com retenção em memória descritas acima.
+- **BUG-002:** a auditoria inicial confirmou evento de reconciliação em todos os polls; a correção em 1.9.2 está registrada na matriz acima.

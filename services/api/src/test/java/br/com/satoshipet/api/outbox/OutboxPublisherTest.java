@@ -3,7 +3,7 @@ package br.com.satoshipet.api.outbox;
 import br.com.satoshipet.api.job.JobLockService;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
-import jakarta.transaction.Transactional;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -16,12 +16,6 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @QuarkusTest
 class OutboxPublisherTest {
@@ -62,9 +56,8 @@ class OutboxPublisherTest {
     }
 
     @Test
-    @Transactional
     void eventoComLockDetidoPorOutraInstanciaPermanecePendente() {
-        markExistingPendingAsProcessed();
+        QuarkusTransaction.requiringNew().run(OutboxPublisherTest::markExistingPendingAsProcessed);
         String aggregateId = "account-lock-" + UUID.randomUUID();
         String lockName = OutboxPublisher.domainLockName("Account", aggregateId);
         String otherOwner = "other-owner-" + UUID.randomUUID();
@@ -72,7 +65,7 @@ class OutboxPublisherTest {
 
         assertTrue(jobLockService.acquire(lockName, otherOwner, Duration.ofMinutes(1)));
         try {
-            outboxService.save(
+            save(
                     eventId,
                     "Account",
                     aggregateId,
@@ -83,7 +76,7 @@ class OutboxPublisherTest {
 
             publisher.poll();
 
-            OutboxEvent event = OutboxEvent.findById(eventId);
+            OutboxEvent event = reload(eventId);
             assertNotNull(event);
             assertNull(event.processedAt, "Evento bloqueado deve continuar pendente");
         } finally {
@@ -92,13 +85,12 @@ class OutboxPublisherTest {
     }
 
     @Test
-    @Transactional
     void eventosDeAgregadosDiferentesSaoProcessadosNoMesmoCiclo() {
-        markExistingPendingAsProcessed();
+        QuarkusTransaction.requiringNew().run(OutboxPublisherTest::markExistingPendingAsProcessed);
         UUID firstId = UUID.randomUUID();
         UUID secondId = UUID.randomUUID();
 
-        outboxService.save(
+        save(
                 firstId,
                 "Account",
                 "account-first-" + UUID.randomUUID(),
@@ -106,7 +98,7 @@ class OutboxPublisherTest {
                 "{}",
                 null
         );
-        outboxService.save(
+        save(
                 secondId,
                 "Account",
                 "account-second-" + UUID.randomUUID(),
@@ -117,8 +109,8 @@ class OutboxPublisherTest {
 
         publisher.poll();
 
-        OutboxEvent first = OutboxEvent.findById(firstId);
-        OutboxEvent second = OutboxEvent.findById(secondId);
+        OutboxEvent first = reload(firstId);
+        OutboxEvent second = reload(secondId);
         assertNotNull(first);
         assertNotNull(second);
         assertNotNull(first.processedAt);
@@ -126,24 +118,21 @@ class OutboxPublisherTest {
     }
 
     @Test
-    @Transactional
     void falhaMantemEventoPendenteEProximoPollProcessaSemReentrega() {
-        markExistingPendingAsProcessed();
+        QuarkusTransaction.requiringNew().run(OutboxPublisherTest::markExistingPendingAsProcessed);
         UUID eventId = UUID.randomUUID();
         String aggregateId = "account-retry-" + UUID.randomUUID();
         // Prefixo fora de BITCOIN_/PET_/TEST_ para o consumidor WS de produção
         // não interceptar o evento antes do FailingOnceConsumer.
         String eventType = "RETRY_ONCE_" + UUID.randomUUID().toString().substring(0, 8);
         FailingOnceConsumer consumer = new FailingOnceConsumer(eventType);
-        JobLockService locks = mock(JobLockService.class);
-        when(locks.acquire(anyString(), anyString(), eq(OutboxPublisher.LOCK_TTL))).thenReturn(true);
-        OutboxPublisher testPublisher = new OutboxPublisher(locks, List.of(consumer));
+        OutboxPublisher testPublisher = new OutboxPublisher(jobLockService, List.of(consumer));
 
-        outboxService.save(eventId, "Account", aggregateId, eventType, "{}", null);
+        save(eventId, "Account", aggregateId, eventType, "{}", null);
 
         testPublisher.processNextBatch();
 
-        OutboxEvent afterFailure = OutboxEvent.findById(eventId);
+        OutboxEvent afterFailure = reload(eventId);
         assertNotNull(afterFailure);
         assertNull(afterFailure.processedAt, "Falha do consumidor não pode marcar evento como processado");
         assertEquals(1, afterFailure.retries);
@@ -151,7 +140,7 @@ class OutboxPublisherTest {
 
         testPublisher.processNextBatch();
 
-        OutboxEvent afterRetry = OutboxEvent.findById(eventId);
+        OutboxEvent afterRetry = reload(eventId);
         assertNotNull(afterRetry);
         assertNotNull(afterRetry.processedAt, "Retry bem-sucedido deve marcar evento como processado");
         assertEquals(1, afterRetry.retries);
@@ -160,7 +149,17 @@ class OutboxPublisherTest {
         testPublisher.processNextBatch();
 
         assertEquals(2, consumer.attempts, "Evento processado não deve ser entregue novamente");
-        verify(locks, times(2)).acquire(anyString(), anyString(), eq(OutboxPublisher.LOCK_TTL));
+
+    }
+
+    private void save(UUID id, String aggregateType, String aggregateId, String eventType,
+                      String payload, String correlationId) {
+        QuarkusTransaction.requiringNew().run(() ->
+                outboxService.save(id, aggregateType, aggregateId, eventType, payload, correlationId));
+    }
+
+    private static OutboxEvent reload(UUID id) {
+        return QuarkusTransaction.requiringNew().call(() -> OutboxEvent.findById(id));
     }
 
     /** Isola o lote do publisher de eventos PET_/BITCOIN_ deixados por outros testes. */

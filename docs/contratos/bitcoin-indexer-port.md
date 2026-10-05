@@ -114,3 +114,8 @@ Eventos `BITCOIN_CHAIN_REORG` usam snapshots de saldo. Os campos de saldo podem
 ser `null` quando não há consulta confiável; isso nunca significa saldo zero.
 Tips, altura do fork e profundidade também são `null` quando a evidência disponível
 é somente o status individual da transação; metadados de chain nunca são inventados.
+
+Uma transação confirmada descoberta pela primeira vez usa o instante do bloco no
+ciclo de vida. Descoberta histórica tardia reconstrói energia naquele instante e
+consome o tempo até agora; não apresenta alimentação antiga como nova. Recebimentos
+já acompanhados conservam a primeira observação e sua identidade nas revisões.

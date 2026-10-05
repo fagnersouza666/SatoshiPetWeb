@@ -99,7 +99,7 @@ public class PublicAddressResource {
                 managed
         ).<BitcoinTransaction>page(0, MAX_HISTORY_SIZE).list();
 
-        // Calcula saldos a partir dos recebimentos lógicos persistidos
+        // Lê o snapshot reconciliado de saldo persistido
         AddressMonitorState state = AddressMonitorState.findByAddress(managed).orElse(null);
         Long confirmedSats = state == null ? null : state.confirmedBalanceSats;
         Long pendingSats = state == null ? null : state.pendingBalanceSats;

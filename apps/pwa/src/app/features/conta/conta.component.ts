@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 import { SessionService } from '../../core/session.service';
 import { AuthService } from '../../core/auth.service';
 import { PetArtworkPanelComponent } from './pet-artwork-panel.component';
+import { RecoveryCodePanelComponent } from './recovery-code-panel.component';
 
 /**
  * Página da conta autenticada (CONTA-05).
@@ -16,7 +17,7 @@ import { PetArtworkPanelComponent } from './pet-artwork-panel.component';
 @Component({
   selector: 'app-conta',
   standalone: true,
-  imports: [RouterLink, PetArtworkPanelComponent],
+  imports: [RouterLink, PetArtworkPanelComponent, RecoveryCodePanelComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="page" aria-labelledby="conta-titulo">
@@ -58,6 +59,7 @@ import { PetArtworkPanelComponent } from './pet-artwork-panel.component';
           }
         </div>
 
+        <app-recovery-code-panel />
         <app-pet-artwork-panel />
       }
 

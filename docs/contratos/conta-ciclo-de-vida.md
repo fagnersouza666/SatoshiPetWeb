@@ -12,7 +12,7 @@ quando não houver pet anterior); valida 1–100 caracteres. Destino conhecido
 preserva nome, criador e arte. A operação cria/reutiliza pet e vínculo atomicamente.
 Trocar para o endereço atual é no-op. O prazo original de 72 horas nunca muda.
 
-Cadastro, troca, recuperação e exclusão adquirem uma trava transacional curta
+Cadastro, login por magic link, troca, recuperação e exclusão adquirem uma trava transacional curta
 na linha `account_mutation_locks/accounts`. Quando necessário, travam pets por
 UUID em ordem crescente; a arte adquire Pet antes de PetArtwork. A serialização
 global reduz throughput dessas mutações administrativas e impede corrida de
@@ -71,3 +71,9 @@ bruto é entregue somente nessa resposta e não fica em logs/banco; a PWA pede
 que o usuário o guarde antes de abrir a conta. Tokens têm o TTL curto configurado
 para magic links. A chamada SMTP ocorre depois de a transação do desafio terminar.
 Ver também [jornada da PWA](./pwa-recuperacao.md).
+
+A verificação de login relê token e conta depois de adquirir a mesma trava da
+recuperação. Consumo do magic link e criação da sessão pertencem a uma transação
+única. Se um login antigo terminar primeiro, a recuperação revoga essa sessão;
+se a recuperação terminar primeiro, o link antigo já não autoriza login. Nenhuma
+sessão do e-mail anterior pode nascer no intervalo entre consumo e revogação.

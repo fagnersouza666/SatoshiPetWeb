@@ -27,7 +27,7 @@ export class ApiClientService {
     cache?: RequestCache,
   ): Observable<T> {
     const privateRequest =
-      /^\/v1\/account(?:\/|$)/.test(path) && !path.startsWith('/v1/account/recovery/');
+      /^\/v1\/account(?:\/|$)/.test(path) && !/^\/v1\/account\/recovery\/(email|reset)$/.test(path);
     return defer(() => {
       const revision = this.session.revision();
       let headers = new HttpHeaders({ 'Content-Type': 'application/json' });

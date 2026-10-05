@@ -282,7 +282,7 @@ public class BitcoinMonitorService {
             if (original.logicalReceipt != null && original.logicalReceipt != receipt) invalidateReceipt(original.logicalReceipt, now);
             emitTransactionReplacedEvent(address, original, info, now);
         }
-        updateReceipt(tx, now);
+        updateReceipt(tx, now, conflicts.isEmpty());
         if (info.amountSats() > 0) emitTransactionObservedEvent(address, tx, info, now);
     }
 
@@ -299,6 +299,10 @@ public class BitcoinMonitorService {
     }
 
     private void updateReceipt(BitcoinTransaction tx, Instant now) {
+        updateReceipt(tx, now, false);
+    }
+
+    private void updateReceipt(BitcoinTransaction tx, Instant now, boolean firstObservation) {
         LogicalReceipt receipt = tx.logicalReceipt;
         if (receipt == null) return; // Saída sem recebimento não alimenta.
         if (!isActive(tx.status) || tx.amountSats == 0) {
@@ -309,8 +313,10 @@ public class BitcoinMonitorService {
         receipt.confirmedSats = tx.status == BitcoinTransaction.Status.CONFIRMED ? tx.amountSats : 0;
         receipt.pendingSats = tx.status == BitcoinTransaction.Status.PENDING ? tx.amountSats : 0;
         receipt.updatedAt = now.isBefore(receipt.createdAt) ? receipt.createdAt : now;
+        Instant effectiveAt = firstObservation && tx.status == BitcoinTransaction.Status.CONFIRMED
+                && tx.confirmedAt != null ? tx.confirmedAt : now;
         notifyPet(tx.address, pet -> petLifecycle.onReceiptObserved(pet.id, receipt.id, tx.amountSats,
-                tx.status == BitcoinTransaction.Status.CONFIRMED, now));
+                tx.status == BitcoinTransaction.Status.CONFIRMED, effectiveAt));
     }
 
     private void invalidateReceipt(LogicalReceipt receipt, Instant now) {

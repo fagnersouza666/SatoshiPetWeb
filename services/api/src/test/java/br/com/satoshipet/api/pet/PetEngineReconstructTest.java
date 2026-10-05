@@ -4,6 +4,7 @@ import br.com.satoshipet.api.account.Account;
 import br.com.satoshipet.api.account.AccountAddressBinding;
 import br.com.satoshipet.api.account.Address;
 import br.com.satoshipet.api.btc.BitcoinTransaction;
+import br.com.satoshipet.api.btc.AddressMonitorState;
 import br.com.satoshipet.api.btc.LogicalReceipt;
 import br.com.satoshipet.api.pet.engine.ReserveMath;
 import io.quarkus.test.junit.QuarkusTest;
@@ -65,6 +66,7 @@ class PetEngineReconstructTest {
         persistConfirmedReceipt(fixture, FIVE_THOUSAND, 100, BEFORE_CREATED);
         persistConfirmedReceipt(fixture, TEN_THOUSAND, 101, BEFORE_CREATED);
 
+        AddressMonitorState.loadOrCreate(fixture.address, NOW).recordBalance(15_000L, 0L, NOW);
         portionPort.recordPositivePortion(
                 fixture.pet.id, fixture.account.id, PORTION_SATS, PortionOrigin.CREATOR_PLAN, NOW);
 
@@ -95,6 +97,7 @@ class PetEngineReconstructTest {
 
         persistConfirmedReceipt(fixture, TEN_THOUSAND, 100, BEFORE_CREATED);
 
+        AddressMonitorState.loadOrCreate(fixture.address, NOW).recordBalance(15_000L, 0L, NOW);
         lifecycle.reconstruct(fixture.pet.id, NOW);
 
         Pet pet = Pet.findById(fixture.pet.id);

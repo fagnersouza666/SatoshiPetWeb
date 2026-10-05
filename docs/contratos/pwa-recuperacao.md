@@ -2,6 +2,19 @@
 
 Referências: CC-02, CA-006. A API documenta os endpoints no contrato de conta.
 
+Na página autenticada **Minha conta**, a seção **Código de recuperação** permite
+emitir o primeiro código ou substituir o anterior com uma ação explícita.
+`POST /v1/account/recovery/code` usa cookie, CSRF e `no-store`; não é chamado por
+carregamentos ou leituras. A emissão fica desabilitada offline.
+
+O resultado `{code}` aparece somente em memória e pode ser copiado ou baixado
+por comando do usuário. A tela orienta guardar o segredo fora do aplicativo e
+informa que cada emissão invalida o código anterior. Logout, troca de identidade
+e saída da tela removem o segredo; respostas pendentes de outra sessão são
+descartadas. Não há armazenamento automático em storage, cache ou logs. Ao
+repetir a emissão, a tela remove o código anterior inclusive se a resposta falhar,
+pois o servidor pode já ter concluído a substituição.
+
 1. Em `/recuperar`, informar código de recuperação e novo e-mail. A PWA envia
    `POST /v1/account/recovery/email` com `{code,email}`; aguarda verificação.
 2. O link dedicado chega a `/recuperar?token=...`. O token é removido da URL e

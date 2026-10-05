@@ -485,6 +485,50 @@ class PetEngineTest {
         assertEquals(0, fixture.pet.reserveHours.compareTo(TWELVE_HOURS));
     }
 
+    @Test
+    @Transactional
+    void confirmacaoComValorCorrigidoRevisaRecebimentoJaConfirmado() {
+        Fixture fixture = persistCreatureWithPortion("confirmed-revision");
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, true, NOW);
+        lifecycle.onReceiptConfirmed(fixture.pet.id, receiptId, 10_000L, NOW);
+        assertEquals(10_000L, singleFeeding(fixture.pet).amountSats);
+        assertEquals(0, fixture.pet.reserveHours.compareTo(TWELVE_HOURS));
+    }
+
+    @Test
+    @Transactional
+    void restauracaoConfirmadaDePendenteNuncaCreditadoIniciaCreditoAgora() {
+        Fixture fixture = persistPet("restore-egg", PetPresentation.EGG, true);
+        UUID receiptId = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, false, NOW);
+        lifecycle.onReceiptInvalidated(fixture.pet.id, receiptId, NOW.plusSeconds(10));
+        Instant confirmation = NOW.plus(Duration.ofHours(24));
+        portionPort.recordPositivePortion(fixture.pet.id, fixture.account.id, 10_000L,
+                PortionOrigin.CREATOR_PLAN, confirmation);
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, FIVE_THOUSAND, true, confirmation);
+        PetFeeding feeding = singleFeeding(fixture.pet);
+        assertEquals(confirmation, feeding.creditEffectiveAt);
+        assertEquals(10_000L, feeding.portionSats);
+        assertEquals(0, fixture.pet.reserveHours.compareTo(TWELVE_HOURS));
+    }
+
+    @Test
+    @Transactional
+    void reconstrucaoComHorarioAntigoPreservaWatermarkDoRelogio() {
+        Fixture fixture = persistCreatureWithPortion("reconstruct-clock");
+        UUID receiptId = persistReceipt(fixture, PORTION_SATS);
+        LogicalReceipt receipt = LogicalReceipt.findById(receiptId);
+        receipt.confirmedSats = PORTION_SATS;
+        receipt.pendingSats = 0L;
+        lifecycle.onReceiptObserved(fixture.pet.id, receiptId, PORTION_SATS, true, NOW);
+        Instant evaluated = NOW.plus(Duration.ofHours(10));
+        lifecycle.tick(fixture.pet.id, evaluated);
+        lifecycle.reconstruct(fixture.pet.id, NOW.plus(Duration.ofHours(5)));
+        assertEquals(0, fixture.pet.reserveHours.compareTo(hours("14")));
+        assertEquals(evaluated, fixture.pet.lastEvaluatedAt);
+    }
+
     private static BigDecimal hours(String value) {
         return new BigDecimal(value).setScale(10);
     }

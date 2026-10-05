@@ -49,7 +49,7 @@ class PetTickJobTest {
 
     @Test
     void concessaoPerdidaInterrompeAntesDeQualquerTick() {
-        ca025TickComAppFechadoAtualizaParaPensando();
+        createDepletedPet(Instant.now().minus(Duration.ofHours(10)));
         AtomicInteger checked = new AtomicInteger();
         AtomicInteger ticked = new AtomicInteger();
         JobLockService locks = new JobLockService(null, null) {
@@ -71,36 +71,41 @@ class PetTickJobTest {
     @Test
     void ca025TickComAppFechadoAtualizaParaPensando() {
         Instant depletedAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS).minus(Duration.ofHours(10));
-        UUID petId = QuarkusTransaction.requiringNew().call(() -> {
-        Address address = Address.create(
-                "bcrt1qtick" + UUID.randomUUID().toString().replace("-", ""), depletedAt);
-        address.persist();
-        Account account = Account.create(
-                "tick-" + UUID.randomUUID() + "@test.com",
-                "America/Sao_Paulo",
-                "pt-BR",
-                depletedAt
-        );
-        account.persist();
-        AccountAddressBinding.create(account, address, true, depletedAt).persist();
-        Pet pet = Pet.create(address, account, "Tick", depletedAt);
-        pet.presentation = PetPresentation.CREATURE;
-        pet.bornAt = depletedAt;
-        pet.reserveHours = BigDecimal.ZERO.setScale(10);
-        pet.lastEvaluatedAt = depletedAt;
-        pet.reserveDepletedAt = depletedAt;
-        pet.emotionalState = EmotionalState.ALIMENTADO;
-        pet.persist();
-
-        return pet.id;
-        });
+        UUID petId = createDepletedPet(depletedAt);
 
         job.tick();
 
         QuarkusTransaction.requiringNew().run(() -> {
-        Pet updated = Pet.findById(petId);
-        assertEquals(EmotionalState.PENSANDO, updated.emotionalState);
-        assertEquals(depletedAt.truncatedTo(java.time.temporal.ChronoUnit.MICROS), updated.reserveDepletedAt);
+            Pet updated = Pet.findById(petId);
+            assertEquals(EmotionalState.PENSANDO, updated.emotionalState);
+            assertEquals(depletedAt, updated.reserveDepletedAt);
         });
+    }
+
+    private UUID createDepletedPet(Instant depletedAt) {
+        return QuarkusTransaction.requiringNew().call(() -> {
+            Address address = Address.create(
+                    "bcrt1qtick" + UUID.randomUUID().toString().replace("-", ""), depletedAt);
+            address.persist();
+            Account account = Account.create(
+                    "tick-" + UUID.randomUUID() + "@test.com",
+                    "America/Sao_Paulo",
+                    "pt-BR",
+                    depletedAt
+            );
+            account.persist();
+            AccountAddressBinding.create(account, address, true, depletedAt).persist();
+            Pet pet = Pet.create(address, account, "Tick", depletedAt);
+            pet.presentation = PetPresentation.CREATURE;
+            pet.bornAt = depletedAt;
+            pet.reserveHours = BigDecimal.ZERO.setScale(10);
+            pet.lastEvaluatedAt = depletedAt;
+            pet.reserveDepletedAt = depletedAt;
+            pet.emotionalState = EmotionalState.ALIMENTADO;
+            pet.persist();
+
+            return pet.id;
+        });
+
     }
 }

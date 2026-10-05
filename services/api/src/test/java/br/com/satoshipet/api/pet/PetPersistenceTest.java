@@ -36,8 +36,8 @@ class PetPersistenceTest {
     Flyway flyway;
 
     @Test
-    void flywayCorrenteEhVersao7() {
-        assertEquals("7", flyway.info().current().getVersion().getVersion());
+    void flywayCorrenteIncluiCorrecoesDaAuditoria() {
+        assertEquals("12", flyway.info().current().getVersion().getVersion());
     }
 
     @Test

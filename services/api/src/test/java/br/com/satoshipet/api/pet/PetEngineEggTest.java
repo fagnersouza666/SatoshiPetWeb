@@ -413,6 +413,21 @@ class PetEngineEggTest {
         assertEquals(PetPresentation.EGG, fixture.pet.presentation);
     }
 
+    @Test
+    @Transactional
+    void replayNoOvoPreservaPendenteQueFoiCreditadoEnquantoCriatura() {
+        Fixture fixture = persistBornCreature("pending-credit-egg");
+        UUID first = persistReceipt(fixture, FIVE_THOUSAND);
+        UUID pending = persistReceipt(fixture, FIVE_THOUSAND);
+        lifecycle.onReceiptObserved(fixture.pet.id, first, FIVE_THOUSAND, true, NOW);
+        lifecycle.onReceiptObserved(fixture.pet.id, pending, FIVE_THOUSAND, false, NOW);
+        lifecycle.onBalanceKnown(fixture.pet.id, 0L, FIVE_THOUSAND, NOW);
+        lifecycle.onReceiptObserved(fixture.pet.id, first, FIVE_THOUSAND, false, NOW);
+        assertEquals(PetPresentation.EGG, fixture.pet.presentation);
+        lifecycle.onReceiptInvalidated(fixture.pet.id, first, NOW);
+        assertEquals(0, fixture.pet.reserveHours.compareTo(SIX_HOURS));
+    }
+
     private static BigDecimal hours(String value) {
         return new BigDecimal(value).setScale(ReserveMath.SCALE);
     }

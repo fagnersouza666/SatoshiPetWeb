@@ -3,12 +3,9 @@ package br.com.satoshipet.api.outbox;
 import br.com.satoshipet.api.platform.CorrelationIdContext;
 import br.com.satoshipet.api.job.JobLockService;
 import io.quarkus.arc.All;
+import io.quarkus.narayana.jta.QuarkusTransaction;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
-import jakarta.transaction.Status;
-import jakarta.transaction.Transactional;
-import jakarta.transaction.TransactionSynchronizationRegistry;
 import org.jboss.logging.Logger;
 
 import java.nio.charset.StandardCharsets;
@@ -53,13 +50,6 @@ public class OutboxPublisher {
     private final JobLockService jobLockService;
     private final List<OutboxConsumer> consumers;
 
-    /** Permite liberar a trava somente depois do commit da transação do lote. */
-    @Inject
-    TransactionSynchronizationRegistry transactionSynchronizationRegistry;
-
-    /** Owner único por instância, gerado na inicialização. */
-    private final String ownerId = UUID.randomUUID().toString();
-
     public OutboxPublisher(JobLockService jobLockService, @All List<OutboxConsumer> consumers) {
         this.jobLockService = jobLockService;
         this.consumers = consumers;
@@ -72,57 +62,57 @@ public class OutboxPublisher {
      * ciclo.
      */
     @Scheduled(every = "5s", identity = JOB_NAME)
-    @Transactional
     public void poll() {
         processNextBatch();
     }
 
-    @Transactional
     void processNextBatch() {
-        List<OutboxEvent> pending = OutboxEvent.findPending(BATCH_SIZE);
-        if (pending.isEmpty()) {
-            return;
-        }
+        List<PendingEvent> pending = QuarkusTransaction.requiringNew().call(() ->
+                OutboxEvent.findPending(BATCH_SIZE).stream()
+                        .map(event -> new PendingEvent(event.id, domainLockName(event))).toList());
+        if (pending.isEmpty()) return;
 
-        LOG.debugf("Processando %d eventos do outbox.", pending.size());
-
+        String ownerId = UUID.randomUUID().toString();
         Set<String> acquiredLocks = new LinkedHashSet<>();
         Set<String> unavailableLocks = new LinkedHashSet<>();
         try {
-            for (OutboxEvent event : pending) {
-                processEvent(event, acquiredLocks, unavailableLocks);
+            for (PendingEvent event : pending) {
+                processEvent(event, ownerId, acquiredLocks, unavailableLocks);
             }
         } finally {
-            releaseAfterTransaction(acquiredLocks);
+            // Cada unidade já confirmou/reverteu antes de liberar sua concessão.
+            for (String lockName : acquiredLocks) jobLockService.release(lockName, ownerId);
         }
     }
 
-    /**
-     * Processa um evento somente enquanto sua trava de agregado estiver detida
-     * por esta instância. A trava é compartilhada por todos os eventos do mesmo
-     * agregado encontrados neste lote.
-     */
-    private void processEvent(
-            OutboxEvent event,
-            Set<String> acquiredLocks,
-            Set<String> unavailableLocks
-    ) {
-        String lockName = domainLockName(event);
-        if (unavailableLocks.contains(lockName)) {
-            return;
-        }
-
+    /** Relê o evento dentro da mesma transação que protege sua concessão. */
+    private void processEvent(PendingEvent event, String ownerId,
+                              Set<String> acquiredLocks, Set<String> unavailableLocks) {
+        String lockName = event.lockName();
+        if (unavailableLocks.contains(lockName)) return;
         if (!acquiredLocks.contains(lockName)
                 && !jobLockService.acquire(lockName, ownerId, LOCK_TTL)) {
             unavailableLocks.add(lockName);
-            LOG.debugf("Lock do agregado detido por outra instância: lock=%s event=%s",
-                    lockName, event.id);
             return;
         }
-
         acquiredLocks.add(lockName);
-        dispatchEvent(event);
+        try {
+            boolean[] processed = {true};
+            boolean owned = jobLockService.runWhileOwned(lockName, ownerId, LOCK_TTL, () -> {
+                OutboxEvent current = OutboxEvent.findById(event.id());
+                if (current == null || current.processedAt != null) return;
+                dispatchEvent(current);
+                processed[0] = current.processedAt != null;
+            });
+            // Não ultrapassa um evento falho nem continua após perder a concessão.
+            if (!owned || !processed[0]) unavailableLocks.add(lockName);
+        } catch (RuntimeException failure) {
+            unavailableLocks.add(lockName);
+            LOG.errorf(failure, "Falha na unidade do outbox id=%s; agregado aguardará próximo ciclo", event.id());
+        }
     }
+
+    private record PendingEvent(UUID id, String lockName) {}
 
     private void dispatchEvent(OutboxEvent event) {
         try (CorrelationIdContext.Scope ignored = CorrelationIdContext.open(event.correlationId)) {
@@ -161,50 +151,6 @@ public class OutboxPublisher {
 
     private void markProcessed(OutboxEvent event) {
         event.processedAt = Instant.now();
-    }
-
-    /**
-     * Adia a liberação para depois do fim da transação que marcou os eventos.
-     * Sem isso, uma réplica poderia readquirir a trava enquanto
-     * {@code processed_at} ainda não foi confirmado no banco.
-     */
-    private void releaseAfterTransaction(Set<String> lockNames) {
-        if (lockNames.isEmpty()) {
-            return;
-        }
-
-        TransactionSynchronizationRegistry registry = transactionSynchronizationRegistry;
-        if (registry != null) {
-            int status = registry.getTransactionStatus();
-            if (status == Status.STATUS_ACTIVE || status == Status.STATUS_MARKED_ROLLBACK) {
-                List<String> locksToRelease = List.copyOf(lockNames);
-                try {
-                    registry.registerInterposedSynchronization(new jakarta.transaction.Synchronization() {
-                        @Override
-                        public void beforeCompletion() {
-                            // Nada a fazer antes do commit.
-                        }
-
-                        @Override
-                        public void afterCompletion(int completionStatus) {
-                            releaseLocks(locksToRelease);
-                        }
-                    });
-                    return;
-                } catch (IllegalStateException e) {
-                    LOG.warnf(e, "Não foi possível registrar liberação pós-transação das travas do outbox");
-                }
-            }
-        }
-
-        // Fallback para invocações fora do CDI/transação, útil para testes e shutdown.
-        releaseLocks(lockNames);
-    }
-
-    private void releaseLocks(Iterable<String> lockNames) {
-        for (String lockName : lockNames) {
-            jobLockService.release(lockName, ownerId);
-        }
     }
 
     /**
